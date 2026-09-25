@@ -1,0 +1,539 @@
+/* ===========================================================================
+   HMAX — charts.css
+   Styling for the measurement surfaces: charts, data tables, filter controls
+   and the panels that hold them. Loaded alongside shared.css by every
+   analytical workspace.
+   ========================================================================= */
+
+/* ------------------------------------------------------------ 1. PANELS */
+
+.panel{
+  background:var(--bg-elev-1);
+  border:1px solid var(--border-soft);
+  border-radius:14px;
+  overflow:hidden;
+}
+.panel-head{
+  display:flex; align-items:flex-start; gap:16px;
+  padding:16px 18px 14px;
+  border-bottom:1px solid var(--border-soft);
+}
+.panel-title{ font-size:13.5px; font-weight:650; letter-spacing:-.01em; color:var(--text-primary); }
+.panel-sub{ font-size:11.5px; color:var(--text-secondary); margin-top:3px; line-height:1.55; max-width:78ch; }
+.panel-actions{ margin-left:auto; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.panel-body{ padding:16px 18px; }
+.panel-body.tight{ padding:12px 14px; }
+.panel-body.flush{ padding:0; }
+.panel-foot{
+  padding:11px 18px; border-top:1px solid var(--border-soft);
+  background:var(--bg-elev-2); font-size:11px; color:var(--text-tertiary);
+  display:flex; align-items:center; gap:10px;
+}
+
+/* -------------------------------------------------------- 2. FILTER BAR */
+
+.filterbar{
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding:12px 18px;
+  background:var(--bg-elev-1);
+  border:1px solid var(--border-soft);
+  border-radius:12px;
+}
+.filter-group{ display:flex; align-items:center; gap:8px; }
+.filter-label{
+  font-size:9.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-tertiary);
+}
+.seg{
+  display:inline-flex; background:var(--bg-elev-2);
+  border:1px solid var(--border); border-radius:7px; padding:2px; gap:2px;
+}
+.seg button{
+  font-size:11.5px; font-weight:500; color:var(--text-secondary);
+  padding:4px 10px; border-radius:5px; white-space:nowrap;
+  transition:background .12s ease, color .12s ease;
+}
+.seg button:hover{ color:var(--text-primary); }
+.seg button.on{ background:var(--bg-elev-3); color:var(--text-primary); font-weight:600; }
+.filter-reset{ font-size:11px; color:var(--text-tertiary); margin-left:auto; }
+.filter-reset:hover{ color:var(--accent); }
+
+/* --------------------------------------------------------- 3. DATA TABLE */
+
+.dt{ width:100%; border-collapse:collapse; }
+.dt th{
+  font-size:9.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-tertiary); text-align:left; padding:9px 12px;
+  border-bottom:1px solid var(--border); white-space:nowrap;
+  position:sticky; top:0; background:var(--bg-elev-1); z-index:2;
+}
+.dt th.num, .dt td.num{ text-align:right; }
+.dt td{
+  font-size:12px; color:var(--text-secondary);
+  padding:9px 12px; border-bottom:1px solid var(--border-soft); vertical-align:middle;
+}
+.dt td.key{ color:var(--text-primary); font-weight:500; }
+.dt tbody tr{ transition:background .1s ease; }
+.dt tbody tr:hover{ background:var(--bg-elev-2); }
+.dt tbody tr.is-flagged td:first-child{ box-shadow:inset 2px 0 0 var(--amber); }
+.dt tbody tr.is-cased td:first-child{ box-shadow:inset 2px 0 0 var(--accent); }
+.dt-scroll{ max-height:520px; overflow-y:auto; overflow-x:auto; }
+.panel-body.flush{ overflow-x:auto; }
+.dt a.cell-link{ color:var(--text-primary); }
+.dt a.cell-link:hover{ color:var(--accent); }
+
+/* ------------------------------------------------------- 4. RANKED BARS */
+
+.rb{ display:flex; flex-direction:column; }
+.rb-row{
+  display:grid;
+  grid-template-columns:minmax(84px,200px) minmax(36px,1fr) auto auto minmax(0,92px);
+  align-items:center; gap:10px;
+  padding:7px 0;
+}
+.rb-link{ display:block; border-radius:6px; }
+.rb-link:hover{ background:var(--bg-elev-2); }
+.rb-label{ min-width:0; }
+.rb-name{ display:block; font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rb-sub{ display:block; font-size:10px; color:var(--text-tertiary); margin-top:1px; }
+.rb-track{ position:relative; height:16px; background:var(--bg-elev-2); border-radius:3px; overflow:visible; }
+.rb-fill{ height:100%; border-radius:3px; opacity:.85; }
+.rb-base{ position:absolute; top:-3px; bottom:-3px; width:1.5px; background:var(--text-tertiary); }
+.rb-value{ font-size:12px; color:var(--text-primary); text-align:right; white-space:nowrap; }
+.rb-delta{ font-size:11px; text-align:right; white-space:nowrap; }
+.rb-flag{ font-size:10px; color:var(--text-tertiary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* --------------------------------------------------------- 5. STACK BAR */
+
+.stackbar{ display:flex; height:22px; border-radius:5px; overflow:hidden; background:var(--bg-elev-2); }
+.stackbar-seg{ height:100%; opacity:.82; }
+.stackkey{ margin-top:12px; }
+.stackkey-item{
+  display:grid; grid-template-columns:10px minmax(0,1fr) auto; align-items:center; gap:4px 10px;
+  padding:6px 0; border-top:1px solid var(--border-soft); font-size:11.5px;
+}
+.stackkey-dot{ width:8px; height:8px; border-radius:2px; }
+.stackkey-label{ color:var(--text-primary); min-width:0; }
+.stackkey-value{ color:var(--text-secondary); text-align:right; white-space:nowrap; }
+.stackkey-note{ grid-column:2 / -1; color:var(--text-tertiary); font-size:10.5px; line-height:1.5; }
+
+/* ----------------------------------------------------------- 6. HEATMAP */
+
+.hm{ font-size:10px; }
+.hm-row{ display:flex; align-items:center; gap:2px; margin-bottom:2px; }
+.hm-label{
+  width:180px; flex-shrink:0; color:var(--text-secondary); font-size:11px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:8px;
+}
+.hm-col{ flex:1; text-align:center; color:var(--text-tertiary); font-size:9px; font-family:'IBM Plex Mono',monospace; }
+.hm-cell{ flex:1; height:19px; border-radius:2px; transition:outline .1s ease; }
+.hm-cell:hover{ outline:1.5px solid var(--text-secondary); }
+.hm-head{ margin-bottom:5px; }
+
+/* ------------------------------------------------------------- 7. GAUGE */
+
+.gauge{ position:relative; height:8px; background:var(--bg-elev-2); border-radius:4px; margin-top:8px; }
+.gauge-band{ position:absolute; top:0; bottom:0; background:var(--green-soft); border-radius:4px; }
+.gauge-base{ position:absolute; top:-2px; bottom:-2px; width:1.5px; background:var(--text-tertiary); }
+.gauge-mark{ position:absolute; top:-2px; bottom:-2px; width:3px; border-radius:2px; }
+
+/* ------------------------------------------------------------- 8. DELTA */
+
+.delta{ font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:600; }
+.delta-good{ color:var(--green); }
+.delta-bad{ color:var(--amber); }
+.delta-flat{ color:var(--text-tertiary); }
+.delta-none{ color:var(--text-tertiary); font-weight:400; font-style:italic; }
+
+/* --------------------------------------------------- 9. CHART FURNITURE */
+
+.chart-legend{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:10px; }
+.cl-item{ display:flex; align-items:center; gap:6px; font-size:10.5px; color:var(--text-tertiary); }
+.cl-swatch{ width:14px; height:2.5px; border-radius:2px; }
+.cl-swatch.dash{ background:repeating-linear-gradient(90deg,var(--text-tertiary) 0 4px,transparent 4px 7px); height:2px; }
+.cl-swatch.area{ height:9px; border-radius:2px; }
+
+/* -------------------------------------------------- 10. METRIC CLUSTERS */
+
+.metric-strip{ display:grid; gap:1px; background:var(--border-soft); border-radius:12px; overflow:hidden; }
+.metric{ background:var(--bg-elev-1); padding:14px 16px; }
+.metric-label{
+  font-size:9.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--text-tertiary);
+}
+.metric-value{
+  font-family:'IBM Plex Mono',monospace; font-size:21px; font-weight:700;
+  color:var(--text-primary); margin-top:6px; line-height:1; display:flex; align-items:baseline; gap:6px;
+}
+.metric-unit{ font-family:Inter,sans-serif; font-size:10.5px; font-weight:500; color:var(--text-tertiary); }
+.metric-sub{ font-size:11px; color:var(--text-secondary); margin-top:6px; line-height:1.5; }
+
+/* --------------------------------------------------- 11. ENTITY MARKERS */
+
+.line-chip{
+  display:inline-flex; align-items:center; gap:5px;
+  font-size:11px; font-weight:600; color:var(--text-secondary);
+}
+.line-dot{ width:7px; height:7px; border-radius:2px; flex-shrink:0; }
+.dir-mark{
+  font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:600;
+  color:var(--text-tertiary); border:1px solid var(--border); border-radius:3px; padding:0 4px;
+}
+.state-dot{ width:6px; height:6px; border-radius:50%; display:inline-block; flex-shrink:0; }
+.state-dot.watch{ background:var(--amber); }
+.state-dot.good{ background:var(--green); }
+.state-dot.normal{ background:var(--border); }
+
+/* ------------------------------------------------- 12. CASE ATTACHMENT
+   The bridge from a measurement to the managed object. Present on every
+   analytical surface so investigation never dead-ends in a chart.
+   ----------------------------------------------------------------------- */
+
+.case-link{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:600;
+  color:var(--accent); background:var(--accent-soft);
+  border-radius:4px; padding:2px 7px; white-space:nowrap;
+}
+.case-link:hover{ background:rgba(94,234,212,.2); }
+.raise-bar{
+  display:flex; align-items:center; gap:14px;
+  padding:13px 18px; border-top:1px solid var(--border-soft);
+  background:var(--bg-elev-2);
+}
+.raise-what{ font-size:11.5px; color:var(--text-secondary); line-height:1.55; }
+.raise-what strong{ color:var(--text-primary); font-weight:600; }
+
+/* Inline promotion affordance inside a table row. Reads as an action, not a
+   status, because the row is asking the user to do something. */
+.raise-link{
+  font-size:11px; font-weight:600; color:var(--amber);
+  background:var(--amber-soft); border:1px solid transparent;
+  border-radius:4px; padding:3px 9px; white-space:nowrap;
+  transition:border-color .13s ease;
+}
+.raise-link:hover{ border-color:var(--amber); }
+
+/* Measurement context on a case: the route back from managed work to the
+   measurements it was raised from. Quiet by default — it is a way out of the
+   page, not a call to action. */
+.ctx-bar{
+  display:flex; align-items:stretch; gap:1px;
+  background:var(--border-soft); border:1px solid var(--border-soft);
+  border-radius:9px; overflow:hidden;
+}
+.ctx-label{
+  display:flex; align-items:center; padding:0 14px;
+  background:var(--bg-elev-2); white-space:nowrap;
+  font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-tertiary);
+}
+.ctx-item{
+  flex:1 1 0; min-width:0; padding:10px 14px;
+  background:var(--bg-elev-1); transition:background .13s ease;
+}
+.ctx-item:hover{ background:var(--bg-elev-2); }
+.ctx-where{
+  display:block; font-size:9.5px; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--accent); margin-bottom:3px;
+}
+.ctx-name{
+  display:block; font-size:12.5px; font-weight:600; color:var(--text-primary);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ctx-sub{
+  display:block; font-size:11px; color:var(--text-tertiary); margin-top:1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* ------------------------------------------------------ 13. SELECT ROWS */
+
+.pick-row{
+  display:grid; align-items:center; gap:12px;
+  padding:10px 14px; border-bottom:1px solid var(--border-soft);
+  transition:background .1s ease;
+}
+.pick-row:hover{ background:var(--bg-elev-2); }
+.pick-row.on{ background:var(--bg-elev-2); box-shadow:inset 2px 0 0 var(--accent); }
+
+/* --------------------------------------------------------- 14. UTILITY */
+
+.rs-avatar{
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; font-weight:700; flex-shrink:0;
+  font-family:Inter,sans-serif; letter-spacing:.02em;
+}
+.num-xl{ font-family:'IBM Plex Mono',monospace; font-size:28px; font-weight:700; letter-spacing:-.02em; }
+.num-lg{ font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:700; }
+.muted{ color:var(--text-tertiary); }
+.hair{ border-top:1px solid var(--border-soft); }
+.scroll-y{ overflow-y:auto; }
+
+/* ------------------------------------------------------ 15. ADMINISTRATION
+   Governance surfaces: who may do what, what runs unattended, what the
+   platform reads, and what claims are measured against. */
+
+.view-tabs{ display:flex; gap:1px; background:var(--border-soft);
+  border:1px solid var(--border-soft); border-radius:9px; overflow:hidden; }
+.view-tab{ flex:1 1 0; padding:11px 16px; background:var(--bg-elev-1);
+  transition:background .13s ease; }
+.view-tab:hover{ background:var(--bg-elev-2); }
+.view-tab.on{ background:var(--bg-elev-3); box-shadow:inset 0 -2px 0 var(--accent); }
+.vt-name{ display:block; font-size:12.5px; font-weight:600; color:var(--text-secondary); }
+.view-tab.on .vt-name{ color:var(--text-primary); }
+.vt-sub{ display:block; font-size:10.5px; color:var(--text-tertiary); margin-top:2px; }
+
+.admin-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:16px; }
+.admin-card{ background:var(--bg-elev-1); border:1px solid var(--border-soft);
+  border-radius:11px; padding:16px 18px 18px; }
+.ac-head{ display:flex; align-items:center; gap:11px; margin-bottom:11px; }
+.ac-person{ font-size:13.5px; font-weight:600; color:var(--text-primary); }
+.ac-role{ font-size:11.5px; color:var(--text-secondary); margin-top:1px; }
+.depth-chip{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700;
+  color:var(--text-tertiary); background:var(--bg-elev-3); border-radius:4px; padding:3px 7px; }
+.ac-question{ font-size:12px; font-style:italic; color:var(--text-secondary);
+  line-height:1.55; padding:10px 12px; background:var(--bg-elev-2);
+  border-left:2px solid var(--border); border-radius:0 5px 5px 0; }
+.ac-stats{ display:flex; gap:16px; margin:12px 0 4px; font-size:11px; color:var(--text-tertiary); }
+.ac-stats .mono{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--text-primary); }
+.ac-section{ font-size:9.5px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--text-tertiary); margin:14px 0 7px; }
+.ac-list{ display:flex; flex-direction:column; gap:5px; }
+.ac-list li{ display:flex; gap:8px; font-size:11.5px; line-height:1.5; }
+.acl-verb{ color:var(--text-secondary); flex-shrink:0; }
+.acl-detail{ color:var(--text-primary); font-weight:500; }
+.ac-never{ font-size:11.5px; color:var(--text-tertiary); line-height:1.55; }
+.ac-nav{ display:flex; flex-wrap:wrap; gap:5px; }
+.ac-chip{ font-size:10.5px; color:var(--text-secondary); background:var(--bg-elev-2);
+  border-radius:4px; padding:3px 8px; }
+
+.svc-group{ margin-bottom:20px; }
+.svc-group:last-child{ margin-bottom:0; }
+.svc-stage{ font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  color:var(--accent); padding-bottom:7px; margin-bottom:10px;
+  border-bottom:1px solid var(--border-soft); }
+.svc-row{ display:grid; grid-template-columns:44px 1fr 92px; gap:14px; align-items:start;
+  padding:12px 0; border-bottom:1px solid var(--border-soft); }
+.svc-row:last-child{ border-bottom:none; }
+.svc-id{ font-size:11px; font-weight:700; color:var(--text-tertiary); padding-top:1px; }
+.svc-name{ font-size:12.5px; font-weight:600; color:var(--text-primary); }
+.svc-does{ font-size:11.5px; color:var(--text-secondary); line-height:1.55; margin-top:3px; }
+.svc-pair{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px; }
+.svc-half{ font-size:11px; color:var(--text-secondary); line-height:1.5; }
+.svc-k{ display:block; font-size:9.5px; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--text-tertiary); margin-bottom:2px; }
+.svc-ths{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.svc-th{ display:inline-flex; align-items:center; gap:6px; background:var(--bg-elev-2);
+  border-radius:4px; padding:3px 8px; }
+.sth-k{ font-size:10px; color:var(--text-tertiary); }
+.sth-v{ font-size:10.5px; font-weight:700; color:var(--text-primary); }
+.svc-state{ display:flex; align-items:center; gap:7px; justify-content:flex-end; padding-top:2px; }
+.svc-toggle{ width:26px; height:15px; border-radius:8px; background:var(--bg-elev-3);
+  border:1px solid var(--border); position:relative; flex-shrink:0; }
+.svc-toggle::after{ content:''; position:absolute; top:2px; left:2px; width:9px; height:9px;
+  border-radius:50%; background:var(--text-tertiary); transition:left .15s ease; }
+.svc-toggle.on{ background:var(--accent-soft); border-color:var(--accent); }
+.svc-toggle.on::after{ left:13px; background:var(--accent); }
+.svc-label{ font-size:10.5px; color:var(--text-tertiary); }
+
+.src-state{ font-size:10.5px; font-weight:600; text-transform:capitalize; }
+.src-state.connected{ color:var(--green); }
+.src-state.partial{ color:var(--amber); }
+.src-state.absent, .src-state.disconnected{ color:var(--text-tertiary); }
+.req-chip{ font-size:10px; font-weight:700; color:var(--text-secondary);
+  background:var(--bg-elev-3); border-radius:4px; padding:2px 7px; }
+
+.port-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px 22px; }
+.port-item{ padding-left:12px; border-left:2px solid var(--border-soft); }
+.port-k{ font-size:12px; font-weight:600; color:var(--text-primary); margin-bottom:3px; }
+.port-v{ font-size:11.5px; color:var(--text-secondary); line-height:1.6; }
+
+.model-row{ padding:13px 0; border-bottom:1px solid var(--border-soft); }
+.model-row:last-child{ border-bottom:none; }
+.mr-head{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.mr-id{ font-size:11px; font-weight:700; color:var(--text-tertiary); }
+.mr-name{ font-size:12.5px; font-weight:600; color:var(--text-primary); }
+.mr-ver{ font-size:10.5px; color:var(--text-tertiary); }
+.mr-cal{ margin-left:auto; font-size:10.5px; color:var(--text-tertiary); }
+.mr-cal.ok{ color:var(--green); }
+.mr-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.mr-grid > div, .mr-outside{ font-size:11.5px; color:var(--text-secondary); line-height:1.55; }
+.mr-k{ display:block; font-size:9.5px; font-weight:700; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--text-tertiary); margin-bottom:2px; }
+.mr-outside{ margin-top:9px; padding-top:9px; border-top:1px dashed var(--border-soft);
+  color:var(--amber); }
+
+/* ------------------------------------------------- LIGHT-MODE ELEVATION
+   On a light page, a 1px outline alone reads as flat. Cards carry a soft
+   shadow so the working surface sits above the page plane. */
+.surface, .kpi-card, .insight-card, .panel, .admin-card, .dt-wrap{
+  box-shadow: var(--shadow-sm);
+}
+.kpi-card:hover, .insight-card:hover{ box-shadow: var(--shadow-md); }
+.sidebar{ box-shadow: 1px 0 0 var(--border-soft); }
+.topbar-slot{ box-shadow: 0 1px 0 var(--border-soft); }
+.btn-primary{ box-shadow: var(--shadow-sm); }
+.dt thead th{ background: var(--bg-elev-2); }
+.dt tbody tr:hover{ background: var(--bg-elev-2); }
+
+/* ------------------------------------------------- OPERATING MODEL RAIL
+   One line, on every product screen: what is measured, what is being worked,
+   what has been banked. The current workspace's phase is marked, so position
+   inside the operating model never has to be inferred. */
+
+.rail{ display:flex; align-items:stretch; gap:0; height:46px; padding:0 22px;
+  background:var(--bg-elev-1); border-bottom:1px solid var(--border);
+  position:sticky; top:56px; z-index:39; }
+
+.rail-phase{ display:flex; flex-direction:column; justify-content:center; gap:1px;
+  padding:0 14px; border-radius:7px; align-self:center;
+  transition:background .14s ease; }
+.rail-phase:hover{ background:var(--bg-elev-2); }
+.rail-phase.on{ background:var(--accent-soft); }
+.rp-k{ font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-tertiary); }
+.rail-phase.on .rp-k{ color:var(--accent); }
+.rp-v{ font-size:11.5px; font-weight:600; color:var(--text-secondary); white-space:nowrap; }
+.rail-phase.on .rp-v{ color:var(--text-primary); }
+
+.rail-flow{ align-self:center; width:22px; height:1px; margin:0 6px;
+  background:linear-gradient(90deg,var(--border) 0 60%,transparent 60% 100%);
+  background-size:5px 1px; position:relative; flex-shrink:0; }
+.rail-flow::after{ content:''; position:absolute; right:-1px; top:-2.5px;
+  border-left:5px solid var(--border); border-top:3px solid transparent;
+  border-bottom:3px solid transparent; }
+
+.rail-spine{ display:flex; align-items:center; gap:14px; padding:0 14px;
+  border-radius:7px; align-self:center; min-width:0; }
+.rail-spine.on{ background:var(--accent-soft); }
+.rail-spine-k{ display:flex; flex-direction:column; gap:1px; flex-shrink:0; }
+.rail-spine-k{ font-size:9.5px; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--text-tertiary); }
+.rail-spine.on .rail-spine-k{ color:var(--accent); }
+.rsk-n{ font-size:11.5px; font-weight:600; letter-spacing:0; text-transform:none;
+  color:var(--text-secondary); }
+.rail-spine.on .rsk-n{ color:var(--text-primary); }
+
+.rail-stages{ display:flex; align-items:center; min-width:0; }
+.rail-stage{ display:flex; align-items:baseline; gap:5px; padding:4px 9px;
+  border-radius:6px; transition:background .14s ease; white-space:nowrap; }
+.rail-stage:hover{ background:var(--bg-elev-3); }
+.rs-n{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; font-weight:700;
+  color:var(--text-primary); }
+.rs-l{ font-size:11px; color:var(--text-secondary); }
+.rail-stage.empty .rs-n{ color:var(--text-tertiary); font-weight:500; }
+.rail-stage.empty .rs-l{ color:var(--text-tertiary); }
+.rail-tick{ width:1px; height:12px; background:var(--border-soft); flex-shrink:0; }
+
+@media (max-width:1320px){
+  .rail .rp-v{ display:none; }
+  .rail-stage .rs-l{ display:none; }
+}
+
+/* ------------------------------------------------------ INTELLIGENCE LAYER
+   Everything the platform does unattended is marked in one reserved hue and
+   is decodable from one place, so the service codes scattered through the
+   product read as a single system rather than as loose annotations. */
+
+.smart-pill{ display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 11px;
+  border-radius:7px; border:1px solid var(--border); background:var(--bg-elev-1);
+  font-size:12px; font-weight:600; color:var(--text-secondary); transition:all .14s ease; }
+.smart-pill svg{ width:13px; height:13px; color:var(--purple); }
+.smart-pill:hover{ border-color:var(--purple); color:var(--text-primary); }
+.sp-count{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700;
+  padding:1px 6px; border-radius:999px; background:var(--purple-soft); color:var(--purple); }
+
+.smart-panel{ position:absolute; top:38px; right:0; width:372px; max-height:70vh; overflow-y:auto;
+  background:var(--bg-elev-1); border:1px solid var(--border); border-radius:12px;
+  box-shadow:0 14px 34px rgba(15,22,32,.15); z-index:70; }
+.sp-head{ padding:12px 14px 10px; border-bottom:1px solid var(--border-soft);
+  font-size:12.5px; font-weight:650; color:var(--text-primary);
+  position:sticky; top:0; background:var(--bg-elev-1); }
+.sp-head-sub{ display:block; font-size:11px; font-weight:400; color:var(--text-tertiary);
+  margin-top:3px; line-height:1.5; }
+.sp-group{ padding:9px 0 3px; border-bottom:1px solid var(--border-soft); }
+.sp-group:last-of-type{ border-bottom:none; }
+.sp-stage{ padding:0 14px 6px; font-size:9.5px; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--purple); }
+.sp-item{ display:flex; gap:9px; padding:6px 14px 8px; }
+.sp-id{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700;
+  color:var(--purple); background:var(--purple-soft); border-radius:4px;
+  padding:2px 5px; height:17px; flex-shrink:0; }
+.sp-name{ display:block; font-size:12px; font-weight:500; color:var(--text-primary); line-height:1.4; }
+.sp-stop{ display:block; font-size:10.5px; color:var(--text-tertiary); line-height:1.5; margin-top:2px; }
+.sp-foot{ display:block; padding:10px 14px; border-top:1px solid var(--border-soft);
+  font-size:11.5px; font-weight:600; color:var(--accent); background:var(--bg-elev-2); }
+.sp-foot:hover{ background:var(--bg-elev-3); }
+
+.window-track{ height:5px; border-radius:3px; background:var(--bg-elev-3); overflow:hidden; display:block; }
+.window-track > span{ display:block; height:100%; border-radius:3px; background:var(--accent); }
+
+/* ---------------------------------------------- NARROW-VIEWPORT RESILIENCE
+   The product is designed for 1440 and above. On a smaller demo machine the
+   topbar cluster and wide tables degrade rather than push the page sideways. */
+html{ overflow-y:scroll; }
+.topbar-slot{ min-width:0; }
+.role-switch .rs-name, .role-switch .rs-role{ max-width:132px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.topbar-slot > div:first-child{ flex:1 1 0; min-width:0; }
+.topbar-slot .ts-right{ min-width:0; flex-wrap:nowrap; flex-shrink:0; }
+.topbar-slot .ts-right > *{ flex-shrink:0; }
+.dt-scroll{ overflow-x:auto; }
+.pill-label{ white-space:nowrap; }
+.topbar-slot .ts-title, .topbar-slot .ts-crumb{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+@media (max-width:1400px){
+  .case-search{ width:190px; }
+}
+@media (max-width:1240px){
+  .depth-control-label{ display:none; }
+  .case-search{ width:158px; }
+}
+@media (max-width:1120px){
+  .smart-pill .pill-label, .attention-pill .pill-label{ display:none; }
+  .smart-pill, .attention-pill{ padding:0 9px; }
+}
+@media (max-width:980px){
+  .case-search{ display:none; }
+  .role-switch .rs-name, .role-switch .rs-role{ display:none !important; }
+  .role-switch{ padding:0 7px; }
+}
+/* ============================================================ handover strip
+   Shown once on the destination workspace after a role switch. A switch is a
+   handover in this product, so the receiving desk states what it now holds. */
+.handover-strip{
+  display:flex; align-items:center; gap:22px;
+  padding:13px 26px 13px 22px;
+  background:var(--bg-elev-1);
+  border-bottom:1px solid var(--border-soft);
+  border-left:3px solid var(--purple);
+  position:relative;
+}
+.hs-chain{ display:flex; align-items:center; gap:14px; flex-shrink:0; }
+.hs-who{ display:flex; align-items:center; gap:9px; }
+.hs-av{
+  width:30px; height:30px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:700; letter-spacing:.02em;
+}
+.hs-nm{ font-size:12.5px; font-weight:600; color:var(--text-primary); line-height:1.3; }
+.hs-nm em{ display:block; font-style:normal; font-size:10.5px; font-weight:500; color:var(--text-tertiary); }
+.hs-arrow{
+  font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--purple); white-space:nowrap;
+  padding:0 2px;
+}
+.hs-body{ min-width:0; flex:1 1 0; border-left:1px solid var(--border-soft); padding-left:22px; }
+.hs-holds{ font-size:12px; font-weight:600; color:var(--text-primary); line-height:1.5; }
+.hs-line{ font-size:11.5px; color:var(--text-secondary); line-height:1.55; margin-top:3px; }
+.hs-line a{ color:var(--accent); font-weight:600; }
+.hs-x{
+  position:absolute; top:10px; right:12px;
+  width:22px; height:22px; border-radius:5px;
+  font-size:16px; line-height:1; color:var(--text-tertiary);
+  background:transparent; border:none; cursor:pointer;
+}
+.hs-x:hover{ background:var(--bg-elev-3); color:var(--text-primary); }
+
+@media (max-width:1120px){
+  .hs-nm em{ display:none; }
+  .hs-body{ padding-left:14px; }
+}

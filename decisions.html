@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Decisions</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute;
+
+  var ctx = H.shell.mount({
+    workspace: 'decisions',
+    crumb: 'Work',
+    title: 'Decisions'
+  });
+  if (!ctx) return;
+  var me = ctx.roleId, role = ctx.role;
+
+  /* Two genuinely different asks reach this workspace and must not be
+     conflated: a gate that needs a ruling, and a release that needs doing. */
+  var gates = Q.gatesFor(me);
+  var work = Q.caseloadFor(me).filter(function (c) {
+    var na = C.nextAction(c);
+    return na.role === me && na.tone === 'work';
+  });
+
+  function decisionCard(c) {
+    var na = C.nextAction(c);
+    var dp = c.decisionPending;
+    var lever = c.levers && c.levers[0];
+    var cur = lever ? H.CURRENCIES[lever.currency] : null;
+    var due = C.daysUntilDue(c);
+    var isGate = na.tone === 'gate';
+
+    var ask = dp ? dp.asks
+      : isGate ? 'Confirm the proposed cause so the case can move to simulation.'
+      : 'Confirm implementation and lock the measurement plan before the change is released.';
+
+    return '<div class="surface rounded-xl overflow-hidden mb-4">' +
+
+      '<div class="px-5 pt-5 pb-4">' +
+        '<div class="flex items-start justify-between gap-6 mb-3">' +
+          '<div style="min-width:0">' +
+            '<div class="mono text-[11px]" style="color:var(--text-tertiary)">' + R.esc(c.id) +
+              ' · ' + R.esc(C.stageLabel(c)) + ' gate</div>' +
+            '<div class="text-[16px] font-semibold mt-1" style="letter-spacing:-.015em">' + R.esc(c.title) + '</div>' +
+            '<div class="text-[12px] mt-1" style="color:var(--text-secondary)">' + R.esc(R.whereOf(c)) + '</div>' +
+          '</div>' +
+          '<div style="text-align:right;flex-shrink:0">' +
+            '<div class="mono text-[22px] font-bold">' + (c.metrics.annualMWh || '—') + '</div>' +
+            '<div class="text-[10.5px]" style="color:var(--text-tertiary)">MWh/yr estimated</div>' +
+            (due != null ? '<div class="text-[11px] mt-1.5" style="color:' +
+              (due <= 3 ? 'var(--amber)' : 'var(--text-tertiary)') + '">' +
+              (due < 0 ? Math.abs(due) + ' days overdue' : due === 0 ? 'Due today' : 'Due in ' + due + ' days') + '</div>' : '') +
+          '</div>' +
+        '</div>' +
+
+        '<div class="ask-box p-3.5 rounded-lg mb-4">' +
+          '<div class="text-[10px] font-bold tracking-[.07em] uppercase mb-1.5" style="color:var(--text-tertiary)">' +
+            (isGate ? 'What you are being asked to decide' : 'What you are being asked to do') + '</div>' +
+          '<div class="text-[13px]" style="line-height:1.6">' + R.esc(ask) + '</div>' +
+        '</div>' +
+
+        (cur ? '<div class="mb-4">' + R.budgetMeter(c) + '</div>' : '') +
+
+        '<div class="grid grid-cols-4 gap-3 pt-3" style="border-top:1px solid var(--border-soft)">' +
+          '<div><div class="stat-label">Readiness</div>' +
+            '<div class="mt-1.5">' + R.readinessMeter(c) + '</div></div>' +
+          '<div><div class="stat-label">Confidence</div>' +
+            '<div class="text-[13px] font-semibold mt-1.5" style="text-transform:capitalize">' +
+              R.esc(c.confidenceDetail ? c.confidenceDetail.tier : '—') + '</div>' +
+            (c.confidenceDetail && c.confidenceDetail.limitedBy
+              ? '<div class="text-[10.5px] mt-0.5" style="color:var(--text-tertiary);line-height:1.4">Limited by ' +
+                R.esc(String(c.confidenceDetail.limitedBy).toLowerCase()) + '</div>'
+              : '<div class="text-[10.5px] mt-0.5" style="color:var(--text-tertiary);line-height:1.4">No limiting input</div>') + '</div>' +
+          '<div><div class="stat-label">Cause</div>' +
+            '<div class="text-[13px] font-semibold mt-1.5" style="text-transform:capitalize">' +
+              R.esc(c.attribution && c.attribution.confirmed ? c.attribution.confirmed.v :
+                    c.attribution ? c.attribution.proposed.v + ' (proposed)' : '—') + '</div></div>' +
+          '<div><div class="stat-label">Sample</div>' +
+            '<div class="mono text-[13px] font-semibold mt-1.5">' + (c.metrics.runs || '—') + ' runs</div>' +
+            '<div class="text-[10.5px] mt-0.5" style="color:var(--text-tertiary)">' +
+              R.esc(c.baselineId ? 'vs ' + c.baselineId : '') + '</div></div>' +
+        '</div>' +
+      '</div>' +
+
+      (dp && dp.recommendedPath ?
+        '<div class="px-5 py-3.5" style="background:var(--bg-elev-2);border-top:1px solid var(--border-soft)">' +
+          '<div class="flex items-center gap-2 mb-1.5">' + R.provenance(dp.recommendedPath, { label: 'Suggested path' }) +
+            '<span class="path-chip ml-1">' + R.esc(dp.recommendedPath.v) + '</span></div>' +
+          '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.55">' +
+            R.esc(dp.recommendedPathWhy) + '</div>' +
+        '</div>' : '') +
+
+      '<div class="px-5 py-3.5 flex items-center gap-2.5" style="border-top:1px solid var(--border-soft)">' +
+        '<a class="btn-primary" href="case.html?id=' + R.esc(c.id) + '">' +
+          (isGate ? 'Review the evidence' : 'Open the case') + '</a>' +
+        '<a class="btn-ghost" href="case.html?id=' + R.esc(c.id) + '#decision">Go straight to the decision</a>' +
+        '<span class="ml-auto text-[11px]" style="color:var(--text-tertiary)">' +
+          'Opened ' + C.daysOpen(c) + ' days ago · ' + R.esc(c.assigneeName || '') + ' is the case owner</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  var decided = Q.closedCases().concat(
+    H.CASES.filter(function (c) { return c.decision && !c.outcome; })
+  );
+
+  document.getElementById('main').innerHTML =
+
+    '<p class="lede mb-6">Cases awaiting your ruling or approval. ' +
+      R.esc(role.short === 'Operations Manager'
+        ? 'Cases reach this queue when they spend running time or capacity under your control.'
+        : 'Cases reach this queue when a technical cause requires a specialist ruling.') + '</p>' +
+
+    (gates.length
+      ? R.queueGroup('Awaiting your ruling', gates.length, 'the case cannot advance without you') +
+        gates.map(decisionCard).join('')
+      : '') +
+
+    (work.length
+      ? R.queueGroup('Awaiting your action', work.length, 'approved, not yet released') +
+        work.map(decisionCard).join('')
+      : '') +
+
+    (!gates.length && !work.length
+      ? '<div class="surface rounded-xl p-10" style="text-align:center">' +
+          '<div class="text-[14px] font-semibold mb-1.5">Nothing is waiting on you</div>' +
+          '<div class="text-[12.5px]" style="color:var(--text-secondary)">' +
+            'Cases reach this queue only when they spend something you control.</div></div>'
+      : '') +
+
+    (decided.length
+      ? '<div class="mt-8">' + R.queueGroup('Previously decided', decided.length, 'outcome on record') +
+        decided.map(function (c) { return R.queueRow(c, me); }).join('') + '</div>'
+      : '');
+})();
+</script>
+</body>
+</html>

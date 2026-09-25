@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Administration</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, N = H.net, X = H.charts;
+  var esc = R.esc, em = X.em;
+
+  var ctx = H.shell.mount({ workspace: 'admin', crumb: 'Manage', title: 'Administration' });
+  if (!ctx) return;
+
+  var view = H.shell.param('view', 'people');
+
+  /* ------------------------------------------------------------- tabs */
+
+  var VIEWS = [
+    { id: 'people',   name: 'People and access', sub: 'Who holds which role, and what it permits' },
+    { id: 'services', name: 'Automated services', sub: 'What runs without being asked, and where it stops' },
+    { id: 'sources',  name: 'Data sources',       sub: 'What is connected, and what degrades without it' },
+    { id: 'models',   name: 'Baselines and models', sub: 'What claims are measured against' }
+  ];
+
+  var tabs = '<div class="view-tabs mb-6">' + VIEWS.map(function (v) {
+    return '<a class="view-tab' + (v.id === view ? ' on' : '') + '" href="admin.html?view=' + v.id + '">' +
+      '<span class="vt-name">' + esc(v.name) + '</span>' +
+      '<span class="vt-sub">' + esc(v.sub) + '</span></a>';
+  }).join('') + '</div>';
+
+  /* ---------------------------------------------------------- 1. people */
+
+  /* STAGES is an ordered array, not a keyed map. */
+  function stageLabel(key) {
+    for (var i = 0; i < H.STAGES.length; i++) {
+      if (H.STAGES[i].key === key) return H.STAGES[i].label;
+    }
+    return key;
+  }
+
+  function grantSummary(g) {
+    var out = [];
+    if (g.view) out.push({ verb: 'View', detail: g.view.scope === 'all' ? 'The whole network' : esc(String(g.view.scope)) });
+    if (g.contribute) out.push({ verb: 'Contribute evidence', detail: g.contribute.scope === 'all' ? 'Any case' : esc(String(g.contribute.scope)) });
+    if (g.own) {
+      out.push(g.own.stages.length
+        ? { verb: 'Own cases at', detail: g.own.stages.map(stageLabel).join(', ') +
+            (g.own.scope && g.own.scope !== 'all' ? ' \u00b7 ' + esc(String(g.own.scope)) : '') }
+        : { verb: 'Owns a stage', detail: 'No \u2014 rules on cause and hands back, rather than carrying the case' });
+    }
+    if (g.approve) {
+      out.push(g.approve.currencies.length
+        ? { verb: 'Approve decisions spending',
+            detail: g.approve.currencies.map(function (c) {
+              return H.CURRENCIES[c] ? String(H.CURRENCIES[c].label).toLowerCase() : c;
+            }).join(', ') +
+            (g.approve.scope && g.approve.scope !== 'all' ? ' \u00b7 ' + esc(String(g.approve.scope)) : '') }
+        : { verb: 'Approves', detail: 'Nothing \u2014 recommends, and is not the one who accepts the cost' });
+    }
+    return out;
+  }
+
+  function viewPeople() {
+    var order = ['epm', 'analyst', 'opm', 'rse'];
+
+    var cards = order.map(function (k) {
+      var r = H.ROLES[k];
+      var load = Q.attentionFor(k).length;
+      var pen = Q.openCases().filter(function (c) {
+        var key = c.stage && c.stage.key;
+        var st = null;
+        for (var i = 0; i < H.STAGES.length; i++) { if (H.STAGES[i].key === key) st = H.STAGES[i]; }
+        if (!st) return false;
+        return st.pen === 'currencyOwner' ? H.compute.approverRole(c) === k : st.pen === k;
+      }).length;
+      return '<div class="admin-card">' +
+        '<div class="ac-head">' +
+          '<span class="rs-avatar" style="width:36px;height:36px;font-size:12.5px;background:' + r.soft +
+            ';color:' + r.color + '">' + esc(r.initials) + '</span>' +
+          '<div style="min-width:0">' +
+            '<div class="ac-person">' + esc(r.person) + '</div>' +
+            '<div class="ac-role">' + esc(r.name) + '</div>' +
+          '</div>' +
+          '<span class="depth-chip" style="margin-left:auto">' + esc(r.depth) + '</span>' +
+        '</div>' +
+
+        '<div class="ac-question">' + esc(r.question) + '</div>' +
+
+        '<div class="ac-stats">' +
+          '<div><span class="mono">' + pen + '</span> holding the pen</div>' +
+          '<div><span class="mono">' + load + '</span> in their queue</div>' +
+          '<div>' + esc(r.cadence) + '</div>' +
+        '</div>' +
+
+        '<div class="ac-section">Permitted</div>' +
+        '<ul class="ac-list">' +
+          grantSummary(r.grants).map(function (g) {
+            return '<li><span class="acl-verb">' + esc(g.verb) + '</span>' +
+                   '<span class="acl-detail">' + g.detail + '</span></li>';
+          }).join('') +
+        '</ul>' +
+
+        '<div class="ac-section">Deliberately outside the role</div>' +
+        '<div class="ac-never">' + esc(r.neverDoes) + '</div>' +
+
+        '<div class="ac-section">Sees</div>' +
+        '<div class="ac-nav">' + r.nav.map(function (n) {
+          return H.NAV[n] ? '<span class="ac-chip">' + esc(H.NAV[n].label) + '</span>' : '';
+        }).join('') + '</div>' +
+      '</div>';
+    }).join('');
+
+    /* Depth is the mechanism that makes one product serve four jobs, so it
+       is stated explicitly rather than left as an implementation detail. */
+    var depths = [
+      { id: 'L1', label: 'Summary', who: 'Energy Performance Manager',
+        what: 'Position, priority and outcome. Enough to decide what matters and whether it worked; not enough to re-derive it.' },
+      { id: 'L2', label: 'Working', who: 'Operations and Timetable Performance',
+        what: 'The figures behind a decision, its comparability and its trade-off, at the level needed to accept or reject it.' },
+      { id: 'L3', label: 'Full', who: 'Analyst and Rolling Stock Engineer',
+        what: 'Every input, every assumption, every run. The level at which a claim can be challenged.' }
+    ];
+
+    return tabs +
+      '<p class="lede mb-6">Roles are defined by the decision each is accountable for, not by seniority. ' +
+        'Detail is granted by role so the same case reads differently to the person who prioritises it and ' +
+        'the person who has to defend it.</p>' +
+
+      '<div class="admin-grid mb-7">' + cards + '</div>' +
+
+      '<div class="panel mb-6">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Detail levels</div>' +
+          '<div class="panel-sub">One case record, rendered at the depth the role needs. Adding a role ' +
+            'means assigning a depth and a set of workspaces, not building a new product.</div>' +
+        '</div></div>' +
+        '<div class="panel-body flush">' +
+          '<table class="dt"><thead><tr><th>Level</th><th>Name</th><th>Default for</th><th>What is shown</th>' +
+          '</tr></thead><tbody>' +
+          depths.map(function (d) {
+            return '<tr' + (d.id === ctx.depth ? ' class="is-cased"' : '') + '>' +
+              '<td class="mono key">' + esc(d.id) + '</td>' +
+              '<td class="key">' + esc(d.label) + '</td>' +
+              '<td>' + esc(d.who) + '</td>' +
+              '<td>' + esc(d.what) + '</td></tr>';
+          }).join('') +
+          '</tbody></table>' +
+        '</div>' +
+      '</div>';
+  }
+
+  /* -------------------------------------------------------- 2. services */
+
+  function viewServices() {
+    var byStage = {};
+    H.SERVICES.forEach(function (s) {
+      if (!byStage[s.stage]) byStage[s.stage] = [];
+      byStage[s.stage].push(s);
+    });
+    var stageOrder = [];
+    H.STAGES.forEach(function (g) { if (byStage[g.key]) stageOrder.push(g.key); });
+    for (var k in byStage) {
+      if (byStage.hasOwnProperty(k) && stageOrder.indexOf(k) === -1) stageOrder.push(k);
+    }
+
+    var enabled = H.SERVICES.filter(function (s) { return s.enabled; }).length;
+
+    var groups = stageOrder.map(function (stage) {
+      var label = stageLabel(stage);
+      return '<div class="svc-group">' +
+        '<div class="svc-stage">' + esc(label) + '</div>' +
+        byStage[stage].map(function (s) {
+          var th = [];
+          for (var t in s.thresholds) {
+            if (s.thresholds.hasOwnProperty(t)) {
+              th.push('<span class="svc-th"><span class="sth-k">' + esc(t) + '</span>' +
+                '<span class="sth-v mono">' + esc(String(s.thresholds[t])) + '</span></span>');
+            }
+          }
+          return '<div class="svc-row">' +
+            '<div class="svc-id mono">' + esc(s.id) + '</div>' +
+            '<div style="min-width:0">' +
+              '<div class="svc-name">' + esc(s.name) + '</div>' +
+              '<div class="svc-does">' + esc(s.does) + '</div>' +
+              '<div class="svc-pair">' +
+                '<div class="svc-half"><span class="svc-k">Stops at</span>' + esc(s.checkpoint) + '</div>' +
+                '<div class="svc-half"><span class="svc-k">When it cannot</span>' + esc(s.cannot) + '</div>' +
+              '</div>' +
+              (th.length ? '<div class="svc-ths">' + th.join('') + '</div>' : '') +
+            '</div>' +
+            '<div class="svc-state">' +
+              '<span class="svc-toggle' + (s.enabled ? ' on' : '') + '"></span>' +
+              '<span class="svc-label">' + (s.enabled ? 'Active' : 'Off') + '</span>' +
+            '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    }).join('');
+
+    return tabs +
+      '<p class="lede mb-6">Every automated service is listed with what it does, the point at which it ' +
+        'stops and hands to a person, and what it does instead when its conditions are not met. A service ' +
+        'that cannot meet its threshold holds its output rather than lowering the threshold.</p>' +
+
+      '<div class="metric-strip mb-6">' +
+        '<div class="metric"><div class="metric-label">Services active</div>' +
+          '<div class="metric-value">' + enabled + '<span class="metric-unit">of ' + H.SERVICES.length + '</span></div>' +
+          '<div class="metric-sub">Each can be disabled independently without affecting the case spine.</div></div>' +
+        '<div class="metric"><div class="metric-label">Human checkpoints</div>' +
+          '<div class="metric-value">' + H.SERVICES.length + '</div>' +
+          '<div class="metric-sub">No service completes a stage on its own.</div></div>' +
+        '<div class="metric"><div class="metric-label">Decisions automated</div>' +
+          '<div class="metric-value">0</div>' +
+          '<div class="metric-sub">Services propose and evidence. People decide and are recorded as having decided.</div></div>' +
+      '</div>' +
+
+      '<div class="panel">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Services by stage</div>' +
+          '<div class="panel-sub">Grouped by the gate they support, so it is visible which part of the ' +
+            'spine would lose assistance if one were turned off.</div>' +
+        '</div></div>' +
+        '<div class="panel-body">' + groups + '</div>' +
+      '</div>';
+  }
+
+  /* --------------------------------------------------------- 3. sources */
+
+  function viewSources() {
+    var connected = H.SOURCES.filter(function (s) { return s.state === 'connected'; }).length;
+    var mandatory = H.SOURCES.filter(function (s) { return s.mandatory; });
+    var avg = Math.round(H.SOURCES.reduce(function (a, s) { return a + s.coverage; }, 0) / H.SOURCES.length);
+    var weakest = H.SOURCES.slice().sort(function (a, b) { return a.coverage - b.coverage; })[0];
+
+    return tabs +
+      '<p class="lede mb-6">The platform reads record types, not a named signalling system. Each record ' +
+        'type is supplied by an adapter, so an operator with different infrastructure replaces the adapter ' +
+        'rather than the product. Where a record type is absent, the capability it feeds is withdrawn and ' +
+        'named — it is never silently estimated.</p>' +
+
+      '<div class="metric-strip mb-6">' +
+        '<div class="metric"><div class="metric-label">Adapters connected</div>' +
+          '<div class="metric-value">' + connected + '<span class="metric-unit">of ' + H.SOURCES.length + '</span></div>' +
+          '<div class="metric-sub">' + mandatory.length + ' are mandatory for any energy claim.</div></div>' +
+        '<div class="metric"><div class="metric-label">Mean coverage</div>' +
+          '<div class="metric-value">' + avg + '<span class="metric-unit">%</span></div>' +
+          '<div class="metric-sub">Completeness across the last 28 days.</div></div>' +
+        '<div class="metric"><div class="metric-label">Weakest source</div>' +
+          '<div class="metric-value" style="font-size:19px">' + esc(weakest.record) + '</div>' +
+          '<div class="metric-sub">' + weakest.coverage + '% coverage from ' + esc(weakest.source) + '.</div></div>' +
+      '</div>' +
+
+      '<div class="panel mb-6">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Record types and adapters</div>' +
+          '<div class="panel-sub">What each supplies, and what the platform stops being able to claim ' +
+            'without it.</div></div>' +
+        '</div>' +
+        '<div class="panel-body flush">' +
+          '<table class="dt"><thead><tr>' +
+            '<th>Record type</th><th>Supplied by</th><th>State</th><th class="num">Coverage</th>' +
+            '<th>Required</th><th>Without it</th>' +
+          '</tr></thead><tbody>' +
+          H.SOURCES.map(function (s) {
+            var tone = s.coverage >= 95 ? 'var(--green)' : s.coverage >= 80 ? 'var(--text-primary)' : 'var(--amber)';
+            return '<tr>' +
+              '<td class="key">' + esc(s.record) + '</td>' +
+              '<td>' + R.esc(s.source) + '</td>' +
+              '<td><span class="src-state ' + esc(s.state) + '">' + esc(s.state) + '</span></td>' +
+              '<td class="num mono" style="color:' + tone + '">' + s.coverage + '%</td>' +
+              '<td>' + (s.mandatory
+                ? '<span class="req-chip">Mandatory</span>'
+                : '<span style="color:var(--text-tertiary);font-size:11px">Optional</span>') + '</td>' +
+              '<td style="color:var(--text-secondary)">' + esc(s.degrades) + '</td>' +
+            '</tr>';
+          }).join('') +
+          '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="panel">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Portability</div>' +
+          '<div class="panel-sub">What has to be true for this platform to run on a different railway.</div>' +
+        '</div></div>' +
+        '<div class="panel-body">' +
+          '<div class="port-grid">' +
+            [['Movement data',
+              'Any source that yields run, position and speed records. CBTC and ATO are the current ' +
+              'adapters; conventional signalling with train describer and GPS is the next.'],
+             ['Energy data',
+              'Either measured traction energy or a calibrated model with a stated error band. Where only ' +
+              'a model exists, every figure derived from it carries its envelope.'],
+             ['Network description',
+              'Lines, stations, interstation distances and gradients. Supplied once, versioned thereafter.'],
+             ['Fleet description',
+              'Units, propulsion type and regenerative capability. Determines which comparisons are valid.'],
+             ['Baseline policy',
+              'The operator chooses matched-run, historical or design baselines. The platform enforces ' +
+              'that the choice is declared and held constant within a case.'],
+             ['Role mapping',
+              'Four roles ship by default. An operator maps their own job titles onto the decisions each ' +
+              'role is accountable for.']
+            ].map(function (p) {
+              return '<div class="port-item"><div class="port-k">' + esc(p[0]) + '</div>' +
+                '<div class="port-v">' + esc(p[1]) + '</div></div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  /* ---------------------------------------------------------- 4. models */
+
+  function viewModels() {
+    return tabs +
+      '<p class="lede mb-6">A saving is only as defensible as the thing it is measured against. Baselines ' +
+        'and models are versioned, carry a validity window and an applicability envelope, and a case ' +
+        'records which version it used so a later change cannot silently rewrite a past result.</p>' +
+
+      '<div class="panel mb-6">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Baselines</div>' +
+          '<div class="panel-sub">Each carries the method that produced it, the sample it was fitted on ' +
+            'and the band inside which a difference is not separable from noise.</div></div>' +
+          '<div class="panel-actions">' + R.sref('S2') + '</div>' +
+        '</div>' +
+        '<div class="panel-body flush">' +
+          '<table class="dt"><thead><tr>' +
+            '<th>Baseline</th><th>Type</th><th>Method</th><th class="num">Value</th>' +
+            '<th class="num">Band</th><th class="num">Sample</th><th>Valid</th><th>Comparability</th>' +
+          '</tr></thead><tbody>' +
+          H.BASELINES.map(function (b) {
+            return '<tr>' +
+              '<td class="mono key">' + esc(b.id) + ' v' + esc(String(b.version)) + '</td>' +
+              '<td>' + esc(b.type) + '</td>' +
+              '<td style="color:var(--text-secondary)">' + esc(b.method) + '</td>' +
+              '<td class="num mono">' + X.fmt(b.value) + '</td>' +
+              '<td class="num mono muted">' + esc(b.band) + '</td>' +
+              '<td class="num mono">' + X.fmtInt(b.sampleRuns) + '</td>' +
+              '<td class="mono" style="font-size:10.5px;color:var(--text-tertiary)">' + esc(b.validFrom) +
+                ' \u2192 ' + esc(b.validTo || 'open') + '</td>' +
+              '<td><span class="cm-state ' + esc(b.comparability.score) + '">' +
+                esc(b.comparability.score) + '</span></td>' +
+            '</tr>';
+          }).join('') +
+          '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="panel">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Models</div>' +
+          '<div class="panel-sub">Used to estimate what a change would save before it is made. Each names ' +
+            'the conditions it was validated under and the cases it must not be applied to.</div></div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          H.MODELS.map(function (m) {
+            return '<div class="model-row">' +
+              '<div class="mr-head">' +
+                '<span class="mono mr-id">' + esc(m.id) + '</span>' +
+                '<span class="mr-name">' + esc(m.name) + '</span>' +
+                '<span class="mono mr-ver">v' + esc(m.version) + '</span>' +
+                '<span class="mr-cal' + (m.calibration === 'calibrated' ? ' ok' : '') + '">' +
+                  esc(m.calibration) + ' ' + esc(m.calibratedAt) + '</span>' +
+              '</div>' +
+              '<div class="mr-grid">' +
+                '<div><span class="mr-k">Applicable within</span>' + esc(m.envelope) + '</div>' +
+                '<div><span class="mr-k">Validated against</span>' + esc(m.validation) + '</div>' +
+              '</div>' +
+              (m.outside && m.outside.length
+                ? '<div class="mr-outside"><span class="mr-k">Outside envelope</span>' +
+                  m.outside.map(function (o) { return esc(o); }).join(' \u00b7 ') + '</div>'
+                : '') +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>';
+  }
+
+  /* -------------------------------------------------------------- mount */
+
+  var body = view === 'services' ? viewServices()
+           : view === 'sources'  ? viewSources()
+           : view === 'models'   ? viewModels()
+           : viewPeople();
+
+  document.getElementById('main').innerHTML = body;
+})();
+</script>
+</body>
+</html>

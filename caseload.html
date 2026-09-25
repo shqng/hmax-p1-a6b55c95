@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Caseload</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute;
+
+  var ctx = H.shell.mount({
+    workspace: 'caseload',
+    crumb: 'Work',
+    title: 'Caseload'
+  });
+  if (!ctx) return;
+  var me = ctx.roleId;
+
+  /* One ordering rule for the whole product: what the viewer can move,
+     before what someone else must move, before what nothing can move. */
+  function partition(list) {
+    var yours = [], waiting = [], blocked = [], closed = [];
+    list.forEach(function (c) {
+      var v = R.gateVariant(c, me);
+      if (v === 'done') closed.push(c);
+      else if (v === 'blocked') blocked.push(c);
+      else if (v === 'yours') yours.push(c);
+      else waiting.push(c);
+    });
+    return { yours: yours, waiting: waiting, blocked: blocked, closed: closed };
+  }
+
+  var all = H.CASES.slice().sort(function (a, b) {
+    return C.realisableImpact(b) - C.realisableImpact(a);
+  });
+  var p = partition(all);
+
+  function section(title, note, list) {
+    if (!list.length) return '';
+    return R.queueGroup(title, list.length, note) +
+      '<div class="mb-7">' + list.map(function (c) { return R.queueRow(c, me); }).join('') + '</div>';
+  }
+
+  var totalOpen = Q.openCases().length;
+  var inFlight = Q.openCases().reduce(function (a, c) {
+    return a + (c.metrics && c.metrics.annualMWh ? c.metrics.annualMWh : 0);
+  }, 0);
+
+  document.getElementById('main').innerHTML =
+
+    '<p class="lede mb-6">Open cases ranked by recoverable energy, grouped by what is blocking each one.</p>' +
+
+    '<div class="grid grid-cols-4 gap-3 mb-8">' +
+      R.kpi('Waiting on you', p.yours.length, p.yours.length === 1 ? 'case' : 'cases',
+        p.yours.length ? 'Nothing else in this list can progress without someone else acting first.'
+                       : 'Your queue is clear.', p.yours.length ? 'amber' : null) +
+      R.kpi('Open cases', totalOpen, 'in flight', 'Across ' + H.NETWORK.lines.length + ' lines and ' + H.NETWORK.fleets.length + ' fleets.') +
+      R.kpi('Modelled in flight', inFlight, 'MWh/yr', 'Estimated, not yet verified. Realisation is applied at closure.') +
+      R.kpi('Blocked', p.blocked.length, p.blocked.length === 1 ? 'case' : 'cases',
+        p.blocked.length ? 'Held because a precondition cannot be satisfied, not because of inactivity.' : 'None held.',
+        p.blocked.length ? 'red' : null) +
+    '</div>' +
+
+    section('Waiting on you', 'you hold the pen', p.yours) +
+    section('Waiting on someone else', 'assigned and moving', p.waiting) +
+    section('Blocked', 'a precondition cannot be met', p.blocked) +
+    section('Closed', 'result recorded', p.closed) +
+
+    '<div class="mt-8 pt-6" style="border-top:1px solid var(--border-soft)" data-depth-min="L2">' +
+      '<div class="text-[10.5px] font-bold tracking-[.07em] uppercase mb-3" style="color:var(--text-tertiary)">' +
+        'How this list is ordered</div>' +
+      '<div class="grid grid-cols-3 gap-4">' +
+        '<div class="surface rounded-xl p-4">' +
+          '<div class="text-[12.5px] font-semibold mb-1.5">Realisable, not modelled</div>' +
+          '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+            'Ranking discounts each estimate by the realisation history of its lever type, so a large ' +
+            'low-confidence case does not outrank a smaller one that reliably converts.</div>' +
+          '<div class="mt-2.5">' + R.sref('S7') + '</div>' +
+        '</div>' +
+        '<div class="surface rounded-xl p-4">' +
+          '<div class="text-[12.5px] font-semibold mb-1.5">Ownership is explicit</div>' +
+          '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+            'Every row names the next action and the person who owes it. A case with no named owner ' +
+            'escalates rather than sitting unassigned.</div>' +
+          '<div class="mt-2.5">' + R.sref('S8') + '</div>' +
+        '</div>' +
+        '<div class="surface rounded-xl p-4">' +
+          '<div class="text-[12.5px] font-semibold mb-1.5">Blocked is a state, not a failure</div>' +
+          '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+            'When no qualifying comparison exists the case is held and the missing condition is named, ' +
+            'rather than producing a number that cannot be defended.</div>' +
+          '<div class="mt-2.5">' + R.sref('S2') + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+})();
+</script>
+</body>
+</html>

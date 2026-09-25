@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Analysis</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute, N = H.net, X = H.charts;
+  var esc = R.esc, em = X.em;
+
+  var ctx = H.shell.mount({ workspace: 'explore', crumb: 'Monitor', title: 'Analysis' });
+  if (!ctx) return;
+
+  var state = {
+    line: H.shell.param('line', 'L3'),
+    dir: H.shell.param('dir', 'Northbound'),
+    band: H.shell.param('band', 'All'),
+    view: H.shell.param('view', 'location'),
+    hop: H.shell.param('hop', null)
+  };
+
+  var VIEWS = [
+    { id: 'location', label: 'By location',       hint: 'Where the excess is concentrated' },
+    { id: 'pattern',  label: 'By operating pattern', hint: 'Which operating patterns cost more' },
+    { id: 'time',     label: 'Over time',         hint: 'Whether the gap is new or long-standing' },
+    { id: 'contrib',  label: 'Contributors',      hint: 'What varies alongside it' }
+  ];
+
+  /* ------------------------------------------------------------ controls */
+
+  function seg(id, items, current) {
+    return '<span class="seg" data-seg="' + id + '">' + items.map(function (it) {
+      return '<button data-v="' + esc(it.v) + '"' + (it.v === current ? ' class="on"' : '') + '>' +
+        esc(it.label) + '</button>';
+    }).join('') + '</span>';
+  }
+
+  function controls() {
+    return '<div class="filterbar mb-5">' +
+      '<div class="filter-group"><span class="filter-label">Line</span>' +
+        seg('line', N.LINES.map(function (l) {
+          var ln = R.lineOf(l.id);
+          return { v: l.id, label: (ln && ln.name) || l.id };
+        }), state.line) + '</div>' +
+      '<div class="filter-group"><span class="filter-label">Direction</span>' +
+        seg('dir', [{ v: 'Northbound', label: 'NB' }, { v: 'Southbound', label: 'SB' }, { v: 'Both', label: 'Both' }], state.dir) +
+      '</div>' +
+      '<div class="filter-group"><span class="filter-label">Service band</span>' +
+        seg('band', [{ v: 'All', label: 'All' }, { v: 'Peak', label: 'Peak' }, { v: 'Off-peak', label: 'Off-peak' }], state.band) +
+      '</div>' +
+      '<a class="filter-reset" href="explore.html">Reset</a>' +
+    '</div>';
+  }
+
+  function viewTabs() {
+    return '<div class="flex items-end gap-1 mb-5" style="border-bottom:1px solid var(--border)">' +
+      VIEWS.map(function (v) {
+        var on = v.id === state.view;
+        return '<button data-view="' + v.id + '" class="px-4 pt-2 pb-2.5 text-left" style="border-bottom:2px solid ' +
+          (on ? 'var(--accent)' : 'transparent') + '">' +
+          '<span class="block text-[12.5px] font-' + (on ? 'semibold' : 'medium') + '" style="color:var(--text-' +
+            (on ? 'primary' : 'secondary') + ')">' + esc(v.label) + '</span>' +
+          '<span class="block text-[10.5px] mt-0.5" style="color:var(--text-tertiary)">' + esc(v.hint) + '</span>' +
+        '</button>';
+      }).join('') + '</div>';
+  }
+
+  /* ------------------------------------------------------------- selection */
+
+  var line = N.lineById(state.line);
+  var lineName = (R.lineOf(state.line) || {}).name || state.line;
+  var hops = N.hopsFor({ lineId: state.line, direction: state.dir });
+  hops = hops.slice().sort(function (a, b) { return a.seq - b.seq; });
+
+  var bandFactor = state.band === 'Peak' ? 1.07 : state.band === 'Off-peak' ? 0.97 : 1;
+  var view = hops.map(function (h) {
+    var o = {};
+    for (var k in h) if (h.hasOwnProperty(k)) o[k] = h[k];
+    if (bandFactor !== 1) {
+      o.kwhPerKm = Math.round(h.kwhPerKm * bandFactor * 100) / 100;
+      o.deltaPct = Math.round((o.kwhPerKm - o.baseline) / o.baseline * 1000) / 10;
+      o.excessMwh = Math.round((o.kwhPerKm - o.baseline) * o.km * o.runs * 13 / 100) / 10;
+      o.runs = Math.round(h.runs * (state.band === 'All' ? 1 : 0.38));
+    }
+    return o;
+  });
+
+  var selKwh = 0, selKm = 0, selBaseKwh = 0, excess = 0, worst = null;
+  view.forEach(function (h) {
+    selKwh += h.kwhPerKm * h.km; selBaseKwh += h.baseline * h.km; selKm += h.km;
+    if (h.excessMwh > 0) excess += h.excessMwh;
+    if (!worst || h.excessMwh > worst.excessMwh) worst = h;
+  });
+  var selIntensity = selKwh / selKm, selBaseline = selBaseKwh / selKm;
+
+  var over = view.filter(function (h) { return h.deltaPct > 3; });
+  var top3 = view.slice().sort(function (a, b) { return b.excessMwh - a.excessMwh; }).slice(0, 3);
+  var top3Share = Math.round(top3.reduce(function (a, h) { return a + Math.max(0, h.excessMwh); }, 0) / (excess || 1) * 100);
+
+  /* --------------------------------------------------------- summary strip */
+
+  function summary() {
+    return '<div class="metric-strip grid grid-cols-5 mb-5">' +
+      '<div class="metric"><div class="metric-label">Selection intensity</div>' +
+        '<div class="metric-value">' + selIntensity.toFixed(2) + '<span class="metric-unit">kWh/km</span></div>' +
+        X.gauge(selIntensity, selBaseline) +
+        '<div class="metric-sub">' + X.delta(selIntensity, selBaseline) + ' against ' + selBaseline.toFixed(2) + '</div></div>' +
+      '<div class="metric"><div class="metric-label">Recoverable excess</div>' +
+        '<div class="metric-value" style="color:var(--amber)">' + Math.round(excess) +
+          '<span class="metric-unit">MWh/yr</span></div>' +
+        '<div class="metric-sub">If every hop returned to its own baseline. An upper bound, not a target.</div></div>' +
+      '<div class="metric"><div class="metric-label">Hops above baseline</div>' +
+        '<div class="metric-value">' + over.length + '<span class="metric-unit">of ' + view.length + '</span></div>' +
+        '<div class="metric-sub">Threshold is 3%, inside which the difference is not separable from noise.</div></div>' +
+      '<div class="metric"><div class="metric-label">Concentration</div>' +
+        '<div class="metric-value">' + top3Share + '<span class="metric-unit">% in top 3</span></div>' +
+        '<div class="metric-sub">' + (top3Share > 50
+          ? 'Localised. A targeted intervention is plausible.'
+          : 'Diffuse. A line-wide cause is more likely than a local one.') + '</div></div>' +
+      '<div class="metric"><div class="metric-label">Regenerative recovery</div>' +
+        '<div class="metric-value">' + line.regenPct.toFixed(1) + '<span class="metric-unit">%</span></div>' +
+        '<div class="metric-sub">Fleet ' + line.fleets.join(' and ') + ' on this line.</div></div>' +
+    '</div>';
+  }
+
+  /* -------------------------------------------------------- view: LOCATION */
+
+  function viewLocation() {
+    var ranked = view.slice().sort(function (a, b) { return b.excessMwh - a.excessMwh; });
+
+    var table =
+      '<div class="panel mb-5">' +
+        '<div class="panel-head">' +
+          '<div><div class="panel-title">Interstation performance</div>' +
+          '<div class="panel-sub">Every hop in the selection, ranked by annual energy above baseline.</div></div>' +
+          '<div class="panel-actions">' + R.sref('S3') + '</div>' +
+        '</div>' +
+        '<div class="panel-body flush"><div class="dt-scroll"><table class="dt"><thead><tr>' +
+          '<th>Interstation</th><th class="num">km</th><th class="num">Grad</th>' +
+          '<th class="num">kWh/km</th><th class="num">Base</th><th class="num">Gap</th>' +
+          '<th class="num">Excess</th><th class="num">Dwell</th><th class="num">Runtime σ</th>' +
+          '<th class="num">Regen</th><th class="num">Coast</th><th>Profile</th><th>Status</th>' +
+        '</tr></thead><tbody>' +
+        ranked.map(function (h) {
+          var caseId = N.caseForHop(h.id);
+          return '<tr class="' + (caseId ? 'is-cased' : h.deltaPct > 8 ? 'is-flagged' : '') + '">' +
+            '<td class="key"><a class="cell-link" href="explore.html?line=' + state.line + '&dir=' +
+              encodeURIComponent(state.dir) + '&view=contrib&hop=' + esc(h.id) + '">' + esc(h.label) + '</a></td>' +
+            '<td class="num mono">' + h.km.toFixed(2) + '</td>' +
+            '<td class="num mono muted">' + (h.gradient > 0 ? '+' : '') + h.gradient.toFixed(1) + '%</td>' +
+            '<td class="num mono" style="color:var(--text-primary)">' + h.kwhPerKm.toFixed(2) + '</td>' +
+            '<td class="num mono muted">' + h.baseline.toFixed(2) + '</td>' +
+            '<td class="num">' + X.delta(h.kwhPerKm, h.baseline) + '</td>' +
+            '<td class="num mono" style="color:' + (h.excessMwh > 8 ? 'var(--amber)' : 'var(--text-secondary)') + '">' +
+              (h.excessMwh > 0 ? h.excessMwh.toFixed(1) : '—') + '</td>' +
+            '<td class="num mono">' + h.dwellMean + 's</td>' +
+            '<td class="num mono">' + h.runtimeSd.toFixed(1) + '</td>' +
+            '<td class="num mono">' + h.regenPct.toFixed(1) + '%</td>' +
+            '<td class="num mono">' + h.coastPct + '%</td>' +
+            '<td>' + esc(h.speedClass) + '</td>' +
+            '<td>' + (caseId ? '<a class="case-link" href="case.html?id=' + esc(caseId) + '">' + esc(caseId) + '</a>' : '') + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table></div></div>' +
+        '<div class="raise-bar">' +
+          '<div class="raise-what">' + em(worst.label) + ' carries the largest excess in this selection at ' +
+            em(worst.excessMwh.toFixed(1) + ' MWh/yr') + '. ' +
+            (N.caseForHop(worst.id)
+              ? 'It is already under management.'
+              : 'It has no case attached.') + '</div>' +
+          (N.caseForHop(worst.id)
+            ? '<a class="btn-ghost" style="margin-left:auto" href="case.html?id=' + esc(N.caseForHop(worst.id)) + '">Open case</a>'
+            : '<button class="btn-primary" style="margin-left:auto" id="raiseWorst">Raise a case</button>') +
+        '</div>' +
+      '</div>';
+
+    var profile =
+      '<div class="panel mb-5">' +
+        '<div class="panel-head">' +
+          '<div><div class="panel-title">Intensity along the route</div>' +
+          '<div class="panel-sub">Hops in running order, so adjacent losses read as a section of route.</div></div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          X.columns(view.map(function (h) {
+            return {
+              label: h.seq % 2 ? h.from.slice(0, 6) : '',
+              value: h.kwhPerKm, baseline: h.baseline,
+              tone: h.deltaPct > 8 ? 'bad' : h.deltaPct > 3 ? 'warn' : 'key'
+            };
+          }), { height: 180, zero: false, dp: 2 }) +
+          X.note('The selection runs ' + em(X.fmt((selIntensity - selBaseline) / selBaseline * 100, 1) + '%') +
+            ' above baseline overall, but the excess is not evenly spread: ' + em(top3Share + '%') +
+            ' of it sits in ' + em(top3.length + ' of ' + view.length + ' hops') + '. ' +
+            (top3Share > 50
+              ? 'This concentration is consistent with a local cause — gradient, signalling, dwell or a specific driving pattern — rather than a line-wide condition.'
+              : 'This spread is more consistent with a line-wide condition such as fleet, timetable or receptivity than with any single location.'),
+            'S5') +
+        '</div>' +
+      '</div>';
+
+    return profile + table;
+  }
+
+  /* --------------------------------------------------------- view: PATTERN */
+
+  function viewPattern() {
+    var d = N.DISTRIBUTIONS;
+    var cheapest = d.speedProfile[0], dearest = d.speedProfile[d.speedProfile.length - 1];
+    var spread = (dearest.kwhPerKm - cheapest.kwhPerKm) / cheapest.kwhPerKm * 100;
+
+    var mix =
+      '<div class="panel mb-5">' +
+        '<div class="panel-head">' +
+          '<div><div class="panel-title">Speed profile classes and what each costs</div>' +
+          '<div class="panel-sub">Runs classified by driving pattern between stops.</div></div>' +
+          '<div class="panel-actions">' + R.sref('S6') + '</div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          '<div class="grid grid-cols-2 gap-6">' +
+            '<div>' +
+              '<div class="stat-label mb-2.5">Share of runs</div>' +
+              X.stack(d.speedProfile.map(function (s) {
+                return { label: s.label, value: s.share, tone: s.tone, note: X.fmtInt(s.runs) + ' runs' };
+              }), { unit: '%' }) +
+            '</div>' +
+            '<div>' +
+              '<div class="stat-label mb-2.5">Intensity by class</div>' +
+              X.rankedBars(d.speedProfile.map(function (s) {
+                return { label: s.label, sub: s.share + '% of runs', value: s.kwhPerKm, tone: s.tone };
+              }), { dp: 2 }) +
+            '</div>' +
+          '</div>' +
+          X.note('The spread between the cheapest and dearest way of driving the same route is ' +
+            em(spread.toFixed(0) + '%') + '. ' + em(dearest.label + ' and ' + d.speedProfile[2].label) +
+            ' together account for ' + em((dearest.share + d.speedProfile[2].share) + '% of runs') +
+            ' and are the classes where a change in driving guidance or coasting point would have effect. ' +
+            'Class alone does not establish cause — a held run may be held by signalling rather than by choice.', 'S5') +
+        '</div>' +
+      '</div>';
+
+    function dist(title, sub, bins, unit, tone) {
+      var total = bins.reduce(function (a, b) { return a + b.count; }, 0);
+      var tail = bins.slice(-3).reduce(function (a, b) { return a + b.count; }, 0);
+      return '<div class="panel">' +
+        '<div class="panel-head"><div><div class="panel-title">' + esc(title) + '</div>' +
+          '<div class="panel-sub">' + esc(sub) + '</div></div></div>' +
+        '<div class="panel-body">' +
+          X.columns(bins.map(function (b, i) {
+            return { label: i % 3 === 0 ? X.fmt(b.from, unit === 's' ? 0 : 2) : '',
+                     value: b.count, tone: i >= bins.length - 3 ? 'warn' : tone };
+          }), { height: 150, dp: 0, tickFormat: function (v) { return Math.round(v); } }) +
+          '<div class="text-[11px] mt-2" style="color:var(--text-tertiary)">' +
+            em(Math.round(tail / total * 100) + '%') + ' of observations sit in the upper quarter of the ' +
+            'range, highlighted.' +
+          '</div>' +
+        '</div></div>';
+    }
+
+    return mix +
+      '<div class="grid grid-cols-3 gap-5">' +
+        dist('Braking rate', 'm/s² at the point of brake application. A long right tail indicates late braking, which discards recoverable energy.', d.brakingRate, '', 'key') +
+        dist('Dwell time', 'Seconds at platform. Extended dwell consumes recovery margin and forces harder running downstream.', d.dwell, 's', 'blue') +
+        dist('Runtime variance', 'Seconds against booked sectional running time. Wide variance means the timetable is not being run as planned.', d.runtimeVariance, 's', 'key') +
+      '</div>';
+  }
+
+  /* ------------------------------------------------------------ view: TIME */
+
+  function viewTime() {
+    var cols = N.WEEK_LABELS;
+    var rows = view.slice().sort(function (a, b) { return b.excessMwh - a.excessMwh; }).slice(0, 12).map(function (h) {
+      var rnd = N.seed('hm-' + h.id);
+      var cells = cols.map(function (w, i) {
+        var drift = N.caseForHop(h.id) ? (i / 11) * 0.45 : 0;
+        return { v: Math.round((h.deltaPct + drift * 18 - 6 + rnd() * 9) * 10) / 10, label: h.label + ' ' + w };
+      });
+      return { label: h.label, cells: cells };
+    });
+
+    var lineTrend = line.trend;
+
+    return '<div class="panel mb-5">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">' + esc(lineName) + ' intensity, 12 weeks</div>' +
+          '<div class="panel-sub">Whether the gap is widening, stable or closing.</div></div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          X.series(lineTrend, { height: 190, dp: 2 }) +
+          X.note((line.drift === 'rising'
+            ? 'The gap has ' + em('widened progressively') + ' over the period rather than appearing as a step. ' +
+              'Progressive widening is consistent with a gradual cause — fleet condition, seasonal load or ' +
+              'timetable drift — and inconsistent with a discrete change such as a signalling alteration.'
+            : 'The gap has been ' + em('stable') + ' across the period, with no week outside the comparison band. ' +
+              'A persistent constant offset points to a structural cause or to a baseline that does not fit ' +
+              'this selection, and both should be tested before any intervention is designed.'), 'S5') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="panel">' +
+        '<div class="panel-head"><div>' +
+          '<div class="panel-title">Gap against baseline by location and week</div>' +
+          '<div class="panel-sub">Excess by hop and hour. Rows are the twelve hops carrying the most excess.</div></div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          X.heatmap(rows, cols) +
+          '<div class="chart-legend"><span class="cl-item">Percent above baseline · ' +
+            '<span class="cl-swatch area ml-2" style="background:rgba(94,234,212,.4);width:22px"></span>at or below' +
+            '<span class="cl-swatch area ml-2" style="background:rgba(245,185,92,.6);width:22px"></span>moderate' +
+            '<span class="cl-swatch area ml-2" style="background:rgba(240,100,95,.7);width:22px"></span>high</span></div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  /* ------------------------------------------------------ view: CONTRIBUTORS */
+
+  function viewContrib() {
+    var focus = state.hop ? N.hopById(state.hop) : worst;
+    if (!focus) focus = view[0];
+
+    var pts = view.map(function (h) {
+      return { x: h.dwellMean, y: h.kwhPerKm, tone: h.id === focus.id ? 'warn' : null,
+               size: h.id === focus.id ? 5 : 3, label: h.id === focus.id ? h.from : null };
+    });
+    var pts2 = view.map(function (h) {
+      return { x: h.coastPct, y: h.kwhPerKm, tone: h.id === focus.id ? 'warn' : null,
+               size: h.id === focus.id ? 5 : 3 };
+    });
+
+    function corr(arr) {
+      var n = arr.length, sx = 0, sy = 0, sxy = 0, sxx = 0, syy = 0;
+      arr.forEach(function (p) { sx += p.x; sy += p.y; sxy += p.x * p.y; sxx += p.x * p.x; syy += p.y * p.y; });
+      var d = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
+      return d ? (n * sxy - sx * sy) / d : 0;
+    }
+    var rDwell = corr(pts), rCoast = corr(pts2);
+    function strength(r) {
+      var a = Math.abs(r);
+      return a > 0.6 ? 'strong' : a > 0.35 ? 'moderate' : a > 0.18 ? 'weak' : 'none';
+    }
+    /* "none" has no adverb form, so the sentence has to change shape rather
+       than take a suffix. */
+    function movesWith(r, subject) {
+      var s = strength(r);
+      if (s === 'none') return subject + ' shows no measurable relationship with intensity';
+      return subject + ' correlates ' + s + 'ly with intensity';
+    }
+
+    var caseId = N.caseForHop(focus.id);
+
+    var head =
+      '<div class="panel mb-5">' +
+        '<div class="panel-head">' +
+          '<div><div class="panel-title">' + esc(focus.label) + '</div>' +
+            '<div class="panel-sub">' + esc(lineName) + ' · ' + esc(focus.direction) + ' · ' +
+              focus.km.toFixed(2) + ' km · gradient ' + (focus.gradient > 0 ? '+' : '') + focus.gradient.toFixed(1) + '% · ' +
+              focus.runs + ' runs in period</div></div>' +
+          '<div class="panel-actions">' +
+            (caseId ? '<a class="case-link" href="case.html?id=' + esc(caseId) + '">' + esc(caseId) + '</a>' : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          '<div class="grid grid-cols-6 gap-5">' +
+            ['kwhPerKm|Intensity|kWh/km', 'baseline|Baseline|kWh/km', 'dwellMean|Mean dwell|s',
+             'runtimeSd|Runtime σ|s', 'regenPct|Regen recovery|%', 'coastPct|Coasting share|%'].map(function (spec) {
+              var p = spec.split('|');
+              var v = focus[p[0]];
+              return '<div><div class="stat-label">' + esc(p[1]) + '</div>' +
+                '<div class="num-lg mt-1.5">' + (typeof v === 'number' ? v.toFixed(p[2] === 's' || p[2] === '%' ? 1 : 2) : esc(v)) +
+                '<span class="text-[10px] ml-1" style="color:var(--text-tertiary)">' + esc(p[2]) + '</span></div></div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    var scatters =
+      '<div class="grid grid-cols-2 gap-5 mb-5">' +
+        '<div class="panel">' +
+          '<div class="panel-head"><div><div class="panel-title">Dwell against intensity</div>' +
+            '<div class="panel-sub">Does time at platform move with energy across this selection?</div></div></div>' +
+          '<div class="panel-body">' +
+            X.scatter(pts, { height: 190, xLabel: 'mean dwell (s)', yLabel: 'kWh/km', xdp: 0 }) +
+            '<div class="text-[11px] mt-2" style="color:var(--text-tertiary)">Correlation ' +
+              em(rDwell.toFixed(2)) + ' — ' + strength(rDwell) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="panel">' +
+          '<div class="panel-head"><div><div class="panel-title">Coasting share against intensity</div>' +
+            '<div class="panel-sub">Does the proportion of the hop spent coasting move with energy?</div></div></div>' +
+          '<div class="panel-body">' +
+            X.scatter(pts2, { height: 190, xLabel: 'coasting share (%)', yLabel: 'kWh/km', xdp: 0 }) +
+            '<div class="text-[11px] mt-2" style="color:var(--text-tertiary)">Correlation ' +
+              em(rCoast.toFixed(2)) + ' — ' + strength(rCoast) + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    /* Attribution proposal — the smart layer's reading of the two charts
+       together, expressed as a proposal that a named specialist must rule on. */
+    var domains = [
+      { id: 'movement', label: 'Movement-related',
+        score: Math.abs(rCoast) > Math.abs(rDwell) ? 'supported' : 'partial',
+        why: movesWith(rCoast, 'Coasting share') + ' across ' + view.length +
+             ' hops, and this hop sits ' + (focus.coastPct < 25 ? 'below' : 'above') +
+             ' the selection median for coasting.' },
+      { id: 'operational', label: 'Operational',
+        score: Math.abs(rDwell) > 0.35 ? 'supported' : 'partial',
+        why: movesWith(rDwell, 'Dwell time') + '. Runtime variance here is ' +
+             focus.runtimeSd.toFixed(1) + 's, ' + (focus.runtimeSd > 10 ? 'above' : 'within') +
+             ' the range where regulation would be expected to contribute.' },
+      { id: 'technical', label: 'Train-related',
+        score: focus.regenPct < line.regenPct - 2 ? 'partial' : 'not-supported',
+        why: 'Regenerative recovery here is ' + focus.regenPct.toFixed(1) + '% against ' +
+             line.regenPct.toFixed(1) + '% for the line. ' +
+             (focus.regenPct < line.regenPct - 2
+               ? 'The shortfall is large enough to warrant a fleet check.'
+               : 'No unit-level divergence is visible at this location.') }
+    ];
+    var tone = { supported: 'var(--amber)', partial: 'var(--text-secondary)', 'not-supported': 'var(--text-tertiary)' };
+    var toneLabel = { supported: 'Supported', partial: 'Partially supported', 'not-supported': 'Not supported' };
+
+    var attribution =
+      '<div class="panel">' +
+        '<div class="panel-head">' +
+          '<div><div class="panel-title">Proposed attribution</div>' +
+          '<div class="panel-sub">Derived from the indicators above. A proposal only \u2014 attribution requires a specialist ruling.</div></div>' +
+          '<div class="panel-actions">' + R.smartTag('Proposal') + R.sref('S6') + '</div>' +
+        '</div>' +
+        '<div class="panel-body flush">' +
+          domains.map(function (d) {
+            return '<div class="pick-row" style="grid-template-columns:150px 130px 1fr">' +
+              '<div class="text-[12.5px] font-semibold" style="color:var(--text-primary)">' + esc(d.label) + '</div>' +
+              '<div class="text-[11px] font-semibold" style="color:' + tone[d.score] + '">' + esc(toneLabel[d.score]) + '</div>' +
+              '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' + esc(d.why) + '</div>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+        '<div class="raise-bar">' +
+          '<div class="raise-what">' +
+            (caseId
+              ? 'This location is already managed under ' + em(caseId) + '. The attribution above has been ruled on within that case.'
+              : 'Nothing here is yet a finding. Raising a case assigns an owner, fixes the baseline and ' +
+                'requires a specialist verdict before any option is designed.') + '</div>' +
+          (caseId
+            ? '<a class="btn-primary" style="margin-left:auto" href="case.html?id=' + esc(caseId) + '">Open case</a>'
+            : '<button class="btn-primary" style="margin-left:auto" id="raiseFocus">Raise a case</button>') +
+        '</div>' +
+      '</div>';
+
+    return head + scatters + attribution;
+  }
+
+  /* ------------------------------------------------------------- assemble */
+
+  var bodies = { location: viewLocation, pattern: viewPattern, time: viewTime, contrib: viewContrib };
+
+  document.getElementById('main').innerHTML =
+    '<p class="lede mb-5">Locate inefficiency by location, operating pattern, period and contributing factor. Selection carries across all four views.</p>' +
+    controls() + summary() + viewTabs() + bodies[state.view]();
+
+  /* ---------------------------------------------------------- interaction */
+
+  function go(changes) {
+    var s = {}, k;
+    for (k in state) if (state.hasOwnProperty(k)) s[k] = state[k];
+    for (k in changes) if (changes.hasOwnProperty(k)) s[k] = changes[k];
+    var q = [];
+    for (k in s) if (s.hasOwnProperty(k) && s[k] != null) q.push(k + '=' + encodeURIComponent(s[k]));
+    location.href = 'explore.html?' + q.join('&');
+  }
+
+  var segs = document.querySelectorAll('[data-seg]');
+  for (var i = 0; i < segs.length; i++) {
+    (function (wrap) {
+      var key = wrap.getAttribute('data-seg');
+      var bs = wrap.getElementsByTagName('button');
+      for (var j = 0; j < bs.length; j++) {
+        (function (b) {
+          b.addEventListener('click', function () {
+            var c = {}; c[key] = b.getAttribute('data-v');
+            if (key !== 'view') c.hop = null;
+            go(c);
+          });
+        })(bs[j]);
+      }
+    })(segs[i]);
+  }
+
+  var tabs = document.querySelectorAll('[data-view]');
+  for (var t = 0; t < tabs.length; t++) {
+    (function (b) {
+      b.addEventListener('click', function () { go({ view: b.getAttribute('data-view') }); });
+    })(tabs[t]);
+  }
+
+  function wireRaise(id, hop) {
+    var b = document.getElementById(id);
+    if (!b) return;
+    b.addEventListener('click', function () { H.raise.open(hop); });
+  }
+  wireRaise('raiseWorst', worst);
+  wireRaise('raiseFocus', state.hop ? N.hopById(state.hop) : worst);
+})();
+</script>
+</body>
+</html>

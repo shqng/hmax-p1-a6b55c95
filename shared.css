@@ -1,0 +1,546 @@
+:root{
+  /* Light enterprise palette. Surfaces ascend toward white; the page itself is
+     the recessed plane, so cards read as the working surface. */
+  --bg: #eef1f6;
+  --bg-elev-1: #ffffff;
+  --bg-elev-2: #f4f6fa;
+  --bg-elev-3: #e7ebf2;
+  --border: #ccd3de;
+  --border-soft: #e2e7ef;
+  --text-primary: #0f1620;
+  --text-secondary: #4c5769;
+  --text-tertiary: #5f6a7a;
+  /* Product chrome and primary action. */
+  --accent: #0c6b60;
+  --accent-soft: rgba(12,107,96,0.10);
+  /* State. Chosen for legibility as text on white, not for vibrancy. */
+  --amber: #8a5607;
+  --amber-soft: rgba(138,86,7,0.11);
+  --red: #b3352c;
+  --red-soft: rgba(179,53,44,0.10);
+  --blue: #1c56c9;
+  --blue-soft: rgba(28,86,201,0.10);
+  /* Reserved for the intelligence layer. Nothing system-generated uses any
+     other hue, so the reader learns it once. */
+  --purple: #5b45c4;
+  --purple-soft: rgba(91,69,196,0.10);
+  --green: #15734a;
+  --green-soft: rgba(21,115,74,0.10);
+  --shadow-sm: 0 1px 2px rgba(15,22,32,.05);
+  --shadow-md: 0 1px 3px rgba(15,22,32,.07), 0 4px 12px rgba(15,22,32,.05);
+}
+* { box-sizing: border-box; }
+body{
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: 'IBM Plex Mono', monospace; }
+.surface { background: var(--bg-elev-1); border: 1px solid var(--border-soft); }
+.surface-2 { background: var(--bg-elev-2); border: 1px solid var(--border); }
+.surface-3 { background: var(--bg-elev-3); border: 1px solid var(--border); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+.accent-text { color: var(--accent); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #c3cbd8; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #a8b3c4; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* .nav-link retired â€” the top nav is gone; shell.js renders .sidebar-link. */
+
+.toggle-btn { color: var(--text-secondary); transition: all .15s ease; }
+.toggle-btn.active { background: var(--bg-elev-3); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border); }
+
+.kpi-card { background: linear-gradient(180deg, var(--bg-elev-1) 0%, var(--bg-elev-1) 100%); border: 1px solid var(--border-soft); transition: border-color .15s ease, transform .15s ease; }
+.kpi-card:hover { border-color: var(--border); transform: translateY(-1px); }
+
+.chip { background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-secondary); transition: all .15s ease; cursor: pointer; }
+.chip:hover { border-color: var(--border); color: var(--text-primary); }
+.chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.insight-card { background: var(--bg-elev-1); border: 1px solid var(--border-soft); }
+.insight-card:hover { border-color: var(--border); }
+
+.conf-bar-track { background: var(--bg-elev-3); }
+
+/* Depth is handled by [data-depth-min] in the shell section below.
+   The former .expert-only / .mgmt-only pair is retired. */
+
+.pulse-dot { animation: pulse 2.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{ opacity:1;} 50%{ opacity:.35;} }
+
+.tooltip-target:hover .tooltip-box { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.tooltip-box { opacity: 0; transform: translateY(4px); transition: all .15s ease; pointer-events:none; }
+
+.sparkline-fade { mask-image: linear-gradient(to right, black 70%, transparent 100%); }
+
+/* .role-menu retired â€” superseded by .role-switch in the shell section. */
+
+/* ---- shared additions for other screens ---- */
+.row-hover:hover { background: var(--bg-elev-2); }
+.tab-btn { color: var(--text-tertiary); border-bottom: 2px solid transparent; transition: all .15s ease; }
+.tab-btn:hover { color: var(--text-secondary); }
+.tab-btn.active { color: var(--text-primary); border-color: var(--accent); }
+.tab-nav { display:flex; align-items:center; gap:28px; }
+.stage-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; }
+.timeline-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.timeline-line { width: 1px; background: var(--border); flex-grow: 1; }
+.progress-track { background: var(--bg-elev-3); border-radius: 999px; overflow: hidden; }
+.card-hover:hover { border-color: var(--border); }
+.select-like { background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text-secondary); }
+
+/* ================= IA v2 : Monitor / Cases / Sources ================= */
+
+/* --- sidebar shell --- */
+.app-shell { display: grid; grid-template-columns: 216px 1fr; min-height: 100vh; }
+.sidebar { background: var(--bg-elev-1); border-right: 1px solid var(--border-soft); display: flex; flex-direction: column; }
+.sidebar-link { display: flex; align-items: center; gap: 10px; padding: 9px 14px; margin: 1px 8px; border-radius: 8px; color: var(--text-secondary); font-size: 13.5px; font-weight: 500; transition: all .15s ease; cursor: pointer; }
+.sidebar-link:hover { background: var(--bg-elev-2); color: var(--text-primary); }
+.sidebar-link.active { background: var(--bg-elev-3); color: var(--text-primary); box-shadow: inset 2px 0 0 var(--accent); }
+.sidebar-link svg { width: 16px; height: 16px; flex-shrink: 0; }
+.sidebar-badge { margin-left: auto; font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px; background: var(--bg-elev-3); color: var(--text-tertiary); }
+.sidebar-badge.new { background: var(--accent-soft); color: var(--accent); }
+
+/* --- readiness ladder (L1-L7) : maturity, not severity â€” neutral-to-accent scale, not a stoplight --- */
+.ladder-pill { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; letter-spacing: .02em; }
+.ladder-L1, .ladder-L2 { background: var(--bg-elev-3); color: var(--text-tertiary); }
+.ladder-L3, .ladder-L4 { background: var(--bg-elev-3); color: var(--text-secondary); }
+.ladder-L5, .ladder-L6 { background: var(--bg-elev-3); color: var(--text-primary); }
+.ladder-L7 { background: var(--accent-soft); color: var(--accent); }
+.ladder-track { display: flex; gap: 2px; }
+.ladder-seg { width: 12px; height: 4px; border-radius: 2px; background: var(--border); }
+.ladder-seg.filled { background: var(--accent); }
+
+/* --- margin / impact reservation ledger --- */
+.ledger-track { height: 6px; border-radius: 999px; background: var(--bg-elev-3); overflow: hidden; display: flex; }
+.ledger-fill-committed { background: var(--accent); }
+.ledger-fill-available { background: var(--border); }
+
+/* --- baseline object badges (type must always be explicit â€” distinguished by label/icon, not color) --- */
+.baseline-type { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-elev-3); color: var(--text-secondary); }
+
+/* --- trace / attribution (Progressive Disclosure Trace) --- */
+.trace-chip { display: inline-flex; align-items: center; gap: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: var(--text-tertiary); border: 1px dashed var(--border); border-radius: 5px; padding: 1px 6px; cursor: pointer; transition: all .15s ease; }
+.trace-chip:hover { color: var(--accent); border-color: var(--accent); border-style: solid; }
+.trace-ladder { display: none; }
+.trace-ladder.open { display: block; }
+.trace-step { border-left: 2px solid var(--border); padding: 8px 0 8px 14px; margin-left: 4px; position: relative; }
+.trace-step::before { content: ''; position: absolute; left: -5px; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--bg-elev-1); border: 2px solid var(--accent); }
+.trace-step:last-child { border-color: transparent; }
+
+/* --- constraint envelope / actionability class --- */
+.envelope-stat { border: 1px solid var(--border-soft); background: var(--bg-elev-2); border-radius: 10px; padding: 12px; }
+.action-class { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px; border-radius: 4px; }
+.action-class.immediate { background: var(--accent-soft); color: var(--accent); }
+.action-class.threshold { background: var(--amber-soft); color: var(--amber); }
+.action-class.engineering { background: var(--bg-elev-3); color: var(--text-secondary); }
+
+/* --- plan / verdict pair --- */
+.plan-lock { border: 1px solid var(--border); background: var(--bg-elev-2); border-radius: 10px; }
+.verdict-card { border-radius: 10px; padding: 14px; }
+.verdict-card.confirmed { background: var(--green-soft); border: 1px solid rgba(74,222,128,.35); }
+.verdict-card.partial { background: var(--amber-soft); border: 1px solid rgba(245,185,92,.35); }
+.verdict-card.inconclusive { background: var(--bg-elev-3); border: 1px solid var(--border); }
+
+/* --- smart pipeline: signal engine, precedent nudges, auto vs human provenance --- */
+.smart-tag{ display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; padding:2px 2px; color: var(--purple); border:none; background:none; }
+.smart-tag svg{ width:11px; height:11px; flex-shrink:0; }
+.smart-tag.subtle{ color: var(--text-tertiary); }
+.precedent-card{ border:1px solid var(--border); background: var(--bg-elev-2); border-radius:12px; }
+.funnel-stage{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; }
+.funnel-bar-track{ height:5px; border-radius:999px; background: var(--bg-elev-3); overflow:hidden; margin-top:4px; }
+.funnel-bar-fill{ height:100%; background: var(--accent); border-radius:999px; }
+.trail-icon{ width:18px; height:18px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:9.5px; font-weight:700; }
+.trail-icon.auto{ background: var(--accent-soft); color: var(--accent); }
+.trail-icon.human{ background: var(--bg-elev-3); color: var(--text-secondary); }
+.readiness-progress-track{ height:4px; border-radius:999px; background: var(--bg-elev-3); overflow:hidden; }
+.readiness-progress-fill{ height:100%; background: var(--amber); border-radius:999px; }
+.suggested-action{ position:relative; box-shadow: 0 0 0 1px var(--accent) inset; }
+.suggested-flag{ position:absolute; top:-8px; right:10px; font-size:9.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color: var(--bg); background: var(--accent); padding:1.5px 7px; border-radius:999px; }
+
+/* --- opportunity chip embedded in monitor charts --- */
+.opp-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); border: 1px solid rgba(94,234,212,.3); padding: 3px 10px; border-radius: 999px; }
+
+/* --- schematic chart placeholders (structural, not literal charting) --- */
+.chart-frame { position: relative; height: 168px; border-bottom: 1px solid var(--border-soft); border-left: 1px solid var(--border-soft); }
+.chart-frame svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+
+/* --- lifecycle stepper: one framework, reused per case regardless of type --- */
+.progress-card{ background: var(--bg-elev-1); border: 1px solid var(--border-soft); border-radius: 12px; padding: 16px 18px 14px; }
+.progress-card-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.progress-eyebrow{ font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); }
+.progress-substep{ font-size:11px; color: var(--text-secondary); }
+.stepper-track{ position:relative; display:flex; justify-content:space-between; padding:0 2px; }
+.stepper-line{ position:absolute; left:8.333%; right:8.333%; top:13px; height:2px; background: var(--border-soft); z-index:0; }
+.stepper-line-fill{ position:absolute; left:8.333%; top:13px; height:2px; background: var(--accent); z-index:1; transition: width .2s ease; }
+.stepper-node{ position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:7px; flex:1; }
+.stepper-dot{ width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10.5px; font-weight:800; background: var(--bg-elev-2); border:2px solid var(--border-soft); color: var(--text-tertiary); }
+.stepper-dot.done{ background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.stepper-dot.current{ background: var(--bg-elev-2); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+.stepper-label{ font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color: var(--text-tertiary); }
+.stepper-label.done{ color: var(--text-secondary); }
+.stepper-label.current{ color: var(--text-primary); }
+.stepper-divider{ height:1px; background: var(--border-soft); margin:14px 0 12px; }
+.stepper-next{ display:flex; align-items:center; gap:10px; }
+.stepper-next-icon{ width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; background: var(--accent-soft); color: var(--accent); flex-shrink:0; }
+.stepper-next-text{ font-size:12.5px; line-height:1.4; }
+.stepper-next-text b{ font-weight:700; color: var(--text-primary); }
+.stepper-next-meta{ font-size:11.5px; color: var(--text-secondary); margin-left:auto; white-space:nowrap; padding-left:14px; text-align:right; }
+
+/* --- readiness gate: N questions, generic across case/lever types --- */
+.readiness-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-top:1px solid var(--border-soft); }
+.readiness-row:first-child{ border-top:none; }
+.readiness-dot{ width:7px; height:7px; border-radius:50%; background: var(--green); flex-shrink:0; }
+.readiness-dot.open{ background: var(--text-tertiary); }
+
+/* --- evidence-by-question blocks (lettered, source-agnostic) --- */
+.ev-letter{ width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:800; background: var(--accent-soft); color: var(--accent); flex-shrink:0; }
+.ev-block-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.ev-question{ font-size:11.5px; color: var(--text-tertiary); font-style:italic; }
+
+/* --- currency: named budgets a lever draws down, owned by a role --- */
+.currency-chip{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:5px; border:1px solid var(--border); background: var(--bg-elev-3); color: var(--text-secondary); }
+.gainpay-track{ height:9px; border-radius:999px; overflow:hidden; display:flex; background: var(--bg-elev-3); }
+.gainpay-gain{ background: var(--green); height:100%; }
+.gainpay-pay{ background: var(--amber); height:100%; }
+
+/* --- scenario bundle cards --- */
+.bundle-card{ border:1px solid var(--border-soft); background: var(--bg-elev-2); border-radius:12px; padding:16px; }
+.bundle-card.recommended{ border-color: var(--accent); background: var(--bg-elev-3); box-shadow: 0 0 0 1px var(--accent-soft) inset; }
+.bundle-bar-track{ height:7px; border-radius:999px; overflow:hidden; display:flex; background: var(--bg-elev-3); }
+
+/* ===========================================================================
+   IA v3 â€” shell, depth, queues, gates, handover, smart layer
+   Added in S2. Colour stays reserved for meaningful state: a gate that is
+   yours, a block, a confirmed verdict, a low-confidence reading. Structure,
+   hierarchy and ownership are carried by weight, spacing and rule â€” not hue.
+   ========================================================================= */
+
+/* --- depth ---------------------------------------------------------------
+   One mechanism replaces the old expert-only / mgmt-only pair. Any element
+   can declare the minimum depth at which it is meaningful; the shell sets
+   data-depth on <body>. L1 headline, L2 working, L3 full trace.
+   Display variants are explicit because `revert` would discard the utility
+   class that set the element's display in the first place.
+   ----------------------------------------------------------------------- */
+[data-depth-min]{ display: none !important; }
+body[data-depth="L2"] [data-depth-min="L2"],
+body[data-depth="L3"] [data-depth-min="L2"],
+body[data-depth="L3"] [data-depth-min="L3"]{ display: block !important; }
+body[data-depth="L2"] [data-depth-min="L2"].flex,
+body[data-depth="L3"] [data-depth-min="L2"].flex,
+body[data-depth="L3"] [data-depth-min="L3"].flex{ display: flex !important; }
+body[data-depth="L2"] [data-depth-min="L2"].grid,
+body[data-depth="L3"] [data-depth-min="L2"].grid,
+body[data-depth="L3"] [data-depth-min="L3"].grid{ display: grid !important; }
+body[data-depth="L2"] [data-depth-min="L2"].inline-flex,
+body[data-depth="L3"] [data-depth-min="L2"].inline-flex,
+body[data-depth="L3"] [data-depth-min="L3"].inline-flex{ display: inline-flex !important; }
+body[data-depth="L2"] [data-depth-min="L2"].inline,
+body[data-depth="L3"] [data-depth-min="L2"].inline,
+body[data-depth="L3"] [data-depth-min="L3"].inline{ display: inline !important; }
+body[data-depth="L2"] tr[data-depth-min="L2"],
+body[data-depth="L3"] tr[data-depth-min="L2"],
+body[data-depth="L3"] tr[data-depth-min="L3"]{ display: table-row !important; }
+/* the full trace opens on its own at L3 without needing to be clicked */
+body[data-depth="L3"] .trace-ladder{ display: block; }
+
+/* --- topbar --------------------------------------------------------------
+   One row, four slots: identity, search, depth, role. Rendered once by
+   shell.js so every workspace is guaranteed the same controls.
+   ----------------------------------------------------------------------- */
+.topbar-slot{ display:flex; align-items:center; gap:14px; height:56px; padding:0 22px; background: var(--bg-elev-1); border-bottom:1px solid var(--border-soft); position:sticky; top:0; z-index:40; }
+.topbar-slot .ts-title{ font-size:13.5px; font-weight:650; color: var(--text-primary); letter-spacing:-.01em; }
+.topbar-slot .ts-crumb{ font-size:11.5px; color: var(--text-tertiary); }
+.topbar-slot .ts-right{ margin-left:auto; display:flex; align-items:center; gap:10px; }
+
+.case-search{ position:relative; display:flex; align-items:center; gap:8px; min-width:250px; height:32px; padding:0 11px; border-radius:8px; background: var(--bg-elev-2); border:1px solid var(--border); transition: border-color .15s ease; }
+.case-search:focus-within{ border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.case-search svg{ width:14px; height:14px; color: var(--text-tertiary); flex-shrink:0; }
+.case-search input{ flex:1; background:none; border:none; outline:none; color: var(--text-primary); font-size:12.5px; }
+.case-search input::placeholder{ color: var(--text-tertiary); }
+.case-search kbd{ font-family:'IBM Plex Mono',monospace; font-size:10px; color: var(--text-tertiary); border:1px solid var(--border); border-radius:4px; padding:1px 5px; }
+.case-search-results{ position:absolute; top:38px; left:0; right:0; background: var(--bg-elev-2); border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:0 12px 28px rgba(15,22,32,.13); z-index:60; }
+.case-search-results .csr-item{ display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; border-top:1px solid var(--border-soft); }
+.case-search-results .csr-item:first-child{ border-top:none; }
+.case-search-results .csr-item:hover{ background: var(--bg-elev-3); }
+.case-search-results .csr-id{ font-family:'IBM Plex Mono',monospace; font-size:11px; color: var(--text-tertiary); }
+.case-search-results .csr-empty{ padding:11px 12px; font-size:12px; color: var(--text-tertiary); }
+
+/* --- depth control : a view setting, deliberately quiet --- */
+.depth-control{ display:inline-flex; align-items:center; padding:2px; border-radius:8px; background: var(--bg-elev-2); border:1px solid var(--border); }
+.depth-control button{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700; letter-spacing:.02em; padding:3px 9px; border-radius:6px; color: var(--text-tertiary); background:none; border:none; cursor:pointer; transition: all .15s ease; }
+.depth-control button:hover{ color: var(--text-secondary); }
+.depth-control button.active{ background: var(--bg-elev-3); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border); }
+.depth-control-label{ font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); margin-right:2px; }
+
+/* --- attention pill : the count of things waiting on the current role.
+       Amber only when non-zero â€” a zero state must not read as a warning. --- */
+.attention-pill{ display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 12px; border-radius:8px; font-size:12px; font-weight:600; background: var(--bg-elev-2); border:1px solid var(--border); color: var(--text-tertiary); cursor:pointer; transition: all .15s ease; }
+.attention-pill:hover{ border-color: var(--text-tertiary); color: var(--text-secondary); }
+.attention-pill .ap-count{ font-family:'IBM Plex Mono',monospace; font-size:11px; font-weight:800; min-width:18px; height:18px; padding:0 5px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background: var(--bg-elev-3); color: var(--text-tertiary); }
+.attention-pill.has-items{ background: var(--amber-soft); border-color: rgba(138,86,7,.34); color: var(--amber); }
+.attention-pill.has-items:hover{ border-color: rgba(138,86,7,.62); color: var(--amber); }
+.attention-pill.has-items .ap-count{ background: var(--amber); color: #fff; }
+
+/* --- role switch : a demonstration device, not a product control. The dashed
+       edge is the tell â€” it should never be mistaken for account switching. --- */
+.role-switch{ position:relative; display:inline-flex; align-items:center; gap:9px; height:32px; padding:0 10px; border-radius:8px; background: var(--bg-elev-2); border:1px dashed var(--border); cursor:pointer; transition: border-color .15s ease; }
+.role-switch:hover{ border-color:var(--border); background:var(--bg-elev-2); }
+.role-switch .rs-avatar{ width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:800; letter-spacing:-.02em; flex-shrink:0; background: var(--bg-elev-3); color: var(--text-secondary); }
+.role-switch .rs-name{ font-size:12px; font-weight:600; color: var(--text-primary); line-height:1.1; }
+.role-switch .rs-role{ font-size:10px; color: var(--text-tertiary); line-height:1.1; }
+.role-switch .rs-caret{ width:12px; height:12px; color: var(--text-tertiary); }
+.role-menu-panel{ position:absolute; top:38px; right:0; width:268px; background: var(--bg-elev-2); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 14px 34px rgba(15,22,32,.15); z-index:60; }
+.role-menu-panel .rmp-note{ padding:9px 13px; font-size:10.5px; line-height:1.5; color: var(--text-tertiary); background: var(--bg-elev-1); border-bottom:1px solid var(--border-soft); }
+.role-menu-panel .rmp-item{ display:flex; align-items:flex-start; gap:10px; padding:10px 13px; cursor:pointer; border-top:1px solid var(--border-soft); }
+.role-menu-panel .rmp-item:hover{ background: var(--bg-elev-3); }
+.role-menu-panel .rmp-item.active{ background: var(--bg-elev-3); }
+.role-menu-panel .rmp-item.active .rmp-name{ color: var(--text-primary); }
+.role-menu-panel .rmp-name{ font-size:12.5px; font-weight:600; color: var(--text-secondary); }
+.role-menu-panel .rmp-desc{ font-size:10.5px; color: var(--text-tertiary); line-height:1.45; margin-top:1px; }
+.role-menu-panel .rmp-count{ margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700; padding:1px 6px; border-radius:999px; background: var(--bg-elev-1); color: var(--text-tertiary); flex-shrink:0; }
+.role-menu-panel .rmp-count.live{ background: var(--amber-soft); color: var(--amber); }
+
+/* sidebar gains an "awaiting you" marker, so the count is visible before click */
+.sidebar-link.needs .sidebar-badge{ background: var(--amber-soft); color: var(--amber); }
+
+/* --- queues --------------------------------------------------------------
+   Caseload, decisions and ledger are the same list with different filters.
+   A row states the case, its stage, and the one thing needed next.
+   ----------------------------------------------------------------------- */
+.queue-group{ display:flex; align-items:center; gap:10px; padding:16px 0 9px; }
+.queue-group-title{ font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--text-secondary); }
+.queue-group-count{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:999px; background: var(--bg-elev-2); color: var(--text-tertiary); }
+.queue-group-rule{ flex:1; height:1px; background: var(--border-soft); }
+
+.queue-row{ display:grid; grid-template-columns: 1fr 132px 190px 92px; align-items:center; gap:16px; padding:13px 14px; border-radius:10px; border:1px solid transparent; background: var(--bg-elev-1); cursor:pointer; transition: all .15s ease; }
+.queue-row + .queue-row{ margin-top:5px; }
+.queue-row:hover{ background: var(--bg-elev-2); border-color: var(--border); }
+.queue-row.is-yours{ box-shadow: inset 2.5px 0 0 var(--amber); }
+.queue-row.is-blocked{ box-shadow: inset 2.5px 0 0 var(--red); }
+.queue-row.is-closed{ opacity:.62; }
+.queue-row.is-closed:hover{ opacity:1; }
+.queue-row .qr-id{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; color: var(--text-tertiary); }
+.queue-row .qr-title{ font-size:13px; font-weight:600; color: var(--text-primary); line-height:1.35; margin-top:2px; }
+.queue-row .qr-where{ font-size:11px; color: var(--text-tertiary); margin-top:3px; }
+.queue-row .qr-impact{ font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:700; color: var(--text-primary); text-align:right; }
+.queue-row .qr-impact-unit{ font-size:10px; font-weight:600; color: var(--text-tertiary); }
+
+/* the column that makes a queue a queue: one action, one named owner */
+.queue-need{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.queue-need .qn-what{ font-size:12px; font-weight:600; color: var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.queue-need .qn-who{ font-size:10.5px; color: var(--text-tertiary); }
+.queue-need.gate .qn-what{ color: var(--amber); }
+.queue-need.blocked .qn-what{ color: var(--red); }
+.queue-need.done .qn-what{ color: var(--green); }
+.queue-need.exception .qn-what{ color: var(--red); font-style:italic; }
+
+/* --- slide-over : preview a case without losing the queue --- */
+.slide-over-scrim{ position:fixed; inset:0; background:rgba(26,34,46,.34); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:70; }
+.slide-over-scrim.open{ opacity:1; pointer-events:auto; }
+.slide-over{ position:fixed; top:0; right:0; bottom:0; width:520px; max-width:92vw; background: var(--bg-elev-1); border-left:1px solid var(--border); transform:translateX(100%); transition:transform .22s cubic-bezier(.32,.72,0,1); z-index:71; display:flex; flex-direction:column; }
+.slide-over.open{ transform:translateX(0); }
+.slide-over-head{ display:flex; align-items:flex-start; gap:12px; padding:18px 20px 14px; border-bottom:1px solid var(--border-soft); }
+.slide-over-body{ flex:1; overflow-y:auto; padding:18px 20px 24px; }
+.slide-over-foot{ padding:14px 20px; border-top:1px solid var(--border-soft); background: var(--bg-elev-2); display:flex; align-items:center; gap:10px; }
+
+/* --- gate banner ---------------------------------------------------------
+   The case spine's single most important element: at every stage it states
+   who holds the pen and what has to happen for it to move.
+   ----------------------------------------------------------------------- */
+.gate-banner{ display:flex; align-items:flex-start; gap:13px; padding:14px 16px; border-radius:12px; border:1px solid var(--border); background: var(--bg-elev-2); }
+.gate-banner .gb-icon{ width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background: var(--bg-elev-3); color: var(--text-secondary); }
+.gate-banner .gb-icon svg{ width:15px; height:15px; }
+.gate-banner .gb-label{ font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); }
+.gate-banner .gb-what{ font-size:13.5px; font-weight:650; color: var(--text-primary); margin-top:2px; line-height:1.4; }
+.gate-banner .gb-detail{ font-size:11.5px; color: var(--text-secondary); margin-top:4px; line-height:1.5; }
+.gate-banner .gb-actions{ margin-left:auto; display:flex; align-items:center; gap:8px; flex-shrink:0; padding-left:14px; }
+/* yours â€” the only variant that gets colour, because it is the only one that demands action */
+.gate-banner.yours{ background: var(--amber-soft); border-color: rgba(245,185,92,.34); }
+.gate-banner.yours .gb-icon{ background: var(--amber); color: var(--bg); }
+.gate-banner.yours .gb-label{ color: var(--amber); }
+/* waiting on someone else â€” informational, deliberately grey */
+.gate-banner.waiting .gb-icon{ background: var(--bg-elev-3); color: var(--text-tertiary); }
+.gate-banner.blocked{ background: var(--red-soft); border-color: rgba(240,100,95,.34); }
+.gate-banner.blocked .gb-icon{ background: var(--red); color: var(--bg); }
+.gate-banner.blocked .gb-label{ color: var(--red); }
+.gate-banner.done{ background: var(--green-soft); border-color: rgba(74,222,128,.3); }
+.gate-banner.done .gb-icon{ background: var(--green); color: var(--bg); }
+.gate-banner.done .gb-label{ color: var(--green); }
+
+/* --- handover : the join between two roles, recorded rather than implied --- */
+.handover-card{ display:flex; align-items:center; gap:14px; padding:13px 15px; border-radius:11px; border:1px solid var(--border-soft); background: var(--bg-elev-2); }
+.handover-card .hc-party{ display:flex; align-items:center; gap:9px; min-width:0; }
+.handover-card .hc-avatar{ width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; flex-shrink:0; background: var(--bg-elev-3); color: var(--text-secondary); }
+.handover-card .hc-name{ font-size:12.5px; font-weight:600; color: var(--text-primary); line-height:1.2; }
+.handover-card .hc-role{ font-size:10.5px; color: var(--text-tertiary); line-height:1.2; }
+.handover-card .hc-arrow{ color: var(--text-tertiary); flex-shrink:0; }
+.handover-card .hc-arrow svg{ width:16px; height:16px; display:block; }
+.handover-card .hc-ask{ flex:1; font-size:11.5px; color: var(--text-secondary); line-height:1.5; padding-left:6px; border-left:1px solid var(--border); }
+.handover-card .hc-when{ font-size:10.5px; color: var(--text-tertiary); white-space:nowrap; margin-left:auto; }
+.handover-card.pending .hc-avatar.to{ background: var(--amber-soft); color: var(--amber); }
+.handover-card.accepted .hc-avatar.to{ background: var(--green-soft); color: var(--green); }
+
+/* --- reading -------------------------------------------------------------
+   A plain-language interpretation attached to a chart or table, so a figure
+   never sits on the page without a stated meaning. Carries provenance: it is
+   either the system's reading, or a person's correction of one.
+   ----------------------------------------------------------------------- */
+.reading{ display:flex; gap:10px; padding:11px 13px; border-radius:9px; background: var(--bg-elev-2); border-left:2px solid var(--accent); }
+.reading .rd-body{ min-width:0; }
+.reading .rd-head{ display:flex; align-items:center; gap:7px; margin-bottom:3px; }
+.reading .rd-text{ font-size:12.5px; line-height:1.6; color: var(--text-secondary); }
+.reading .rd-text b{ color: var(--text-primary); font-weight:650; }
+.reading.edited{ border-left-color: var(--text-tertiary); }
+.reading.uncertain{ border-left-color: var(--amber); }
+
+/* a human correction shows what it replaced â€” the original is never discarded */
+.override-note{ margin-top:8px; padding:8px 11px; border-radius:7px; background: var(--bg-elev-1); border:1px dashed var(--border); }
+.override-note .on-label{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color: var(--text-tertiary); margin-bottom:3px; }
+.override-note .on-was{ font-size:11.5px; line-height:1.55; color: var(--text-tertiary); text-decoration:line-through; text-decoration-color: rgba(98,107,121,.5); }
+
+/* when a service cannot reach a conclusion it says so â€” silence would be worse */
+.cannot-conclude{ display:flex; gap:10px; padding:11px 13px; border-radius:9px; background: var(--bg-elev-2); border:1px dashed rgba(245,185,92,.4); }
+.cannot-conclude .cc-icon{ color: var(--amber); flex-shrink:0; }
+.cannot-conclude .cc-icon svg{ width:15px; height:15px; display:block; }
+.cannot-conclude .cc-title{ font-size:12.5px; font-weight:650; color: var(--amber); }
+.cannot-conclude .cc-why{ font-size:11.5px; line-height:1.55; color: var(--text-secondary); margin-top:3px; }
+.cannot-conclude .cc-next{ font-size:11.5px; line-height:1.55; color: var(--text-tertiary); margin-top:5px; }
+
+/* --- service reference : names the service behind an output, so the smart
+       layer is auditable rather than anonymous --- */
+.service-ref{ display:inline-flex; align-items:center; gap:4px; font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700; letter-spacing:.02em; padding:2px 6px 2px 4px; border-radius:5px; background: var(--purple-soft); color: var(--purple); cursor:help; white-space:nowrap; }
+.service-ref svg{ width:10px; height:10px; flex-shrink:0; }
+.service-ref.muted{ background: var(--bg-elev-3); color: var(--text-tertiary); }
+
+/* --- comparability matrix : why this baseline is a fair comparison --- */
+.comparability-matrix{ display:grid; grid-template-columns: 1fr auto 1.3fr; gap:0; border:1px solid var(--border-soft); border-radius:10px; overflow:hidden; }
+.comparability-matrix .cm-head{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color: var(--text-tertiary); padding:8px 12px; background: var(--bg-elev-2); border-bottom:1px solid var(--border-soft); }
+.comparability-matrix .cm-cell{ padding:9px 12px; font-size:11.5px; color: var(--text-secondary); border-bottom:1px solid var(--border-soft); display:flex; align-items:center; gap:7px; }
+.comparability-matrix .cm-cell.factor{ color: var(--text-primary); font-weight:550; }
+.comparability-matrix .cm-cell.num{ font-family:'IBM Plex Mono',monospace; justify-content:flex-end; white-space:nowrap; }
+.comparability-matrix > div:nth-last-child(-n+3){ border-bottom:none; }
+.cm-match{ width:6px; height:6px; border-radius:50%; flex-shrink:0; background: var(--green); }
+.cm-match.strong{ background: var(--green); }
+.cm-match.partial, .cm-match.moderate{ background: var(--amber); }
+.cm-match.weak, .cm-match.no{ background: var(--red); }
+.cm-state{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; white-space:nowrap; }
+.cm-state.strong{ color: var(--green); }
+.cm-state.partial, .cm-state.moderate{ color: var(--amber); }
+.cm-state.weak, .cm-state.no{ color: var(--red); }
+
+/* --- budget meter --------------------------------------------------------
+   A lever spends a named budget. The meter shows what is already committed,
+   what this decision would take, and the floor it must not cross.
+   ----------------------------------------------------------------------- */
+.budget-meter{ position:relative; height:26px; border-radius:7px; background: var(--bg-elev-3); overflow:hidden; display:flex; }
+.budget-meter .bm-committed{ background: var(--border); height:100%; }
+.budget-meter .bm-proposed{ background: var(--amber); height:100%; transition: width .2s ease; }
+.budget-meter .bm-floor{ position:absolute; top:0; bottom:0; width:2px; background: var(--red); }
+.budget-meter .bm-floor::after{ content:''; position:absolute; top:0; bottom:0; left:2px; width:7px; background:repeating-linear-gradient(135deg, rgba(179,53,44,.28) 0 3px, transparent 3px 6px); }
+.budget-meter.over .bm-proposed{ background: var(--red); }
+.budget-legend{ display:flex; align-items:center; gap:16px; margin-top:8px; font-size:10.5px; color: var(--text-tertiary); }
+.budget-legend .bl-key{ display:inline-flex; align-items:center; gap:6px; }
+.budget-legend .bl-swatch{ width:9px; height:9px; border-radius:2px; flex-shrink:0; }
+
+/* --- decision modal : a decision is an event, so it gets a deliberate frame --- */
+.decision-modal-scrim{ position:fixed; inset:0; background:rgba(26,34,46,.40); display:flex; align-items:center; justify-content:center; padding:24px; opacity:0; pointer-events:none; transition:opacity .18s ease; z-index:80; }
+.decision-modal-scrim.open{ opacity:1; pointer-events:auto; }
+.decision-modal{ width:560px; max-width:100%; max-height:88vh; display:flex; flex-direction:column; background: var(--bg-elev-1); border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:0 22px 52px rgba(15,22,32,.20); transform:translateY(8px) scale(.99); transition:transform .18s ease; }
+.decision-modal-scrim.open .decision-modal{ transform:none; }
+.decision-modal .dm-head{ padding:18px 22px 14px; border-bottom:1px solid var(--border-soft); }
+.decision-modal .dm-title{ font-size:15px; font-weight:680; color: var(--text-primary); letter-spacing:-.01em; }
+.decision-modal .dm-sub{ font-size:11.5px; color: var(--text-tertiary); margin-top:3px; }
+.decision-modal .dm-body{ padding:18px 22px; overflow-y:auto; }
+.decision-modal .dm-foot{ padding:14px 22px; border-top:1px solid var(--border-soft); background: var(--bg-elev-2); display:flex; align-items:center; gap:10px; }
+.decision-modal .dm-foot .dm-spacer{ flex:1; }
+
+/* --- confounder row : what else could explain the change, and was it ruled out --- */
+.confounder-row{ display:grid; grid-template-columns: 1fr 108px; align-items:flex-start; gap:14px; padding:11px 0; border-top:1px solid var(--border-soft); }
+.confounder-row:first-of-type{ border-top:none; }
+.confounder-row .cf-name{ font-size:12.5px; font-weight:600; color: var(--text-primary); }
+.confounder-row .cf-test{ font-size:11px; color: var(--text-tertiary); margin-top:3px; line-height:1.5; }
+.confounder-row .cf-status{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; text-align:right; white-space:nowrap; padding-top:1px; }
+.confounder-row .cf-status.cleared{ color: var(--green); }
+.confounder-row .cf-status.present{ color: var(--amber); }
+.confounder-row .cf-status.untested{ color: var(--text-tertiary); }
+
+/* --- realisation bar : modelled against verified. The gap is the product's
+       credibility, so it is drawn rather than described. --- */
+.realisation-bar{ position:relative; height:30px; border-radius:7px; background: var(--bg-elev-3); overflow:hidden; }
+.realisation-bar .rb-modelled{ position:absolute; inset:0; width:100%; background:repeating-linear-gradient(135deg, rgba(28,86,201,.14) 0 4px, transparent 4px 8px); border-right:1px dashed rgba(28,86,201,.55); }
+.realisation-bar .rb-verified{ position:absolute; top:0; bottom:0; left:0; background: var(--green); opacity:.85; transition: width .25s ease; }
+.realisation-bar .rb-verified.short{ background: var(--amber); }
+.realisation-bar .rb-verified.none{ background: var(--text-tertiary); }
+.realisation-bar .rb-value{ position:absolute; inset:0; display:flex; align-items:center; padding:0 11px; font-family:'IBM Plex Mono',monospace; font-size:11.5px; font-weight:700; color: var(--text-primary); }
+.realisation-bar .rb-pct{ margin-left:auto; font-size:11px; color: var(--text-secondary); }
+
+/* --- envelope band : a figure with its uncertainty shown, never a bare number --- */
+.envelope-band{ position:relative; height:34px; }
+.envelope-band .eb-axis{ position:absolute; left:0; right:0; top:17px; height:1px; background: var(--border); }
+.envelope-band .eb-band{ position:absolute; top:10px; height:15px; border-radius:4px; background: var(--accent-soft); border:1px solid rgba(94,234,212,.35); }
+.envelope-band .eb-point{ position:absolute; top:11px; width:2px; height:13px; background: var(--accent); }
+.envelope-band .eb-observed{ position:absolute; top:8px; width:2px; height:19px; background: var(--amber); }
+.envelope-band .eb-tick{ position:absolute; top:26px; font-family:'IBM Plex Mono',monospace; font-size:9.5px; color: var(--text-tertiary); transform:translateX(-50%); white-space:nowrap; }
+
+/* --- coverage grid : per-source completeness, and what degrades without it --- */
+.coverage-grid{ display:grid; grid-template-columns: 1fr 78px 1fr; gap:0; border:1px solid var(--border-soft); border-radius:10px; overflow:hidden; }
+.coverage-grid .cg-head{ font-size:10px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color: var(--text-tertiary); padding:8px 12px; background: var(--bg-elev-2); border-bottom:1px solid var(--border-soft); }
+.coverage-grid .cg-cell{ padding:10px 12px; font-size:11.5px; color: var(--text-secondary); border-bottom:1px solid var(--border-soft); line-height:1.5; }
+.coverage-grid .cg-cell.src{ color: var(--text-primary); font-weight:550; }
+.coverage-grid .cg-cell.pct{ font-family:'IBM Plex Mono',monospace; text-align:right; white-space:nowrap; }
+.coverage-grid > div:nth-last-child(-n+3){ border-bottom:none; }
+.cg-meter{ height:3px; border-radius:999px; background: var(--bg-elev-3); overflow:hidden; margin-top:5px; }
+.cg-meter i{ display:block; height:100%; background: var(--accent); border-radius:999px; }
+.cg-meter.low i{ background: var(--amber); }
+.cg-meter.critical i{ background: var(--red); }
+
+/* ===========================================================================
+   SHELL CHROME — brand, sidebar structure, attention panel
+   Added for the v3 application frame (shell.js). Everything else on the
+   topbar reuses the component classes already defined above.
+   ========================================================================= */
+
+.sidebar-brand{ display:flex; align-items:center; gap:10px; padding:16px 16px 14px; border-bottom:1px solid var(--border-soft); }
+.brand-mark{ width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; letter-spacing:-.03em; color: var(--bg); background: var(--accent); flex-shrink:0; }
+.brand-name{ font-size:14px; font-weight:750; letter-spacing:-.015em; color: var(--text-primary); line-height:1.15; }
+.brand-sub{ font-size:10px; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); line-height:1.3; }
+
+.sidebar-section{ font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color: var(--text-tertiary); padding:16px 16px 7px; }
+.sidebar-nav{ display:flex; flex-direction:column; }
+.sidebar-foot{ margin-top:auto; padding-bottom:12px; border-top:1px solid var(--border-soft); padding-top:10px; }
+.sidebar-context{ padding:12px 16px 2px; }
+.sc-line{ font-size:11px; color: var(--text-secondary); line-height:1.5; }
+.sc-line.dim{ font-size:10.5px; color: var(--text-tertiary); }
+
+.attention-panel{ position:absolute; top:40px; right:0; width:330px; background: var(--bg-elev-2); border:1px solid var(--border); border-radius:12px; overflow:hidden; box-shadow:0 14px 34px rgba(15,22,32,.15); z-index:70; }
+.ap-head{ padding:9px 13px; font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color: var(--text-tertiary); background: var(--bg-elev-1); border-bottom:1px solid var(--border-soft); }
+.ap-row{ display:block; padding:10px 13px; border-top:1px solid var(--border-soft); cursor:pointer; }
+.ap-row:first-of-type{ border-top:none; }
+.ap-row:hover{ background: var(--bg-elev-3); }
+.ap-what{ font-size:12px; font-weight:600; color: var(--text-primary); }
+.ap-title{ font-size:11px; color: var(--text-secondary); margin-top:2px; line-height:1.45; }
+.ap-since{ font-size:10px; color: var(--text-tertiary); margin-top:3px; }
+.ap-empty{ padding:16px 13px; font-size:12px; color: var(--text-tertiary); text-align:center; }
+
+.case-search-results .csr-item{ text-decoration:none; }
+
+/* --- page-level typographic and action utilities ------------------------- */
+.lede{ font-size:13px; line-height:1.7; color: var(--text-secondary); max-width:78ch; }
+.stat-label{ font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color: var(--text-tertiary); }
+.ask-box{ background: var(--bg-elev-2); border:1px solid var(--border); border-left:2px solid var(--accent); }
+.path-chip{ font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:2px 7px; border-radius:4px; background: var(--accent-soft); color: var(--accent); }
+
+.btn-primary{ display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 15px; border-radius:8px; font-size:12.5px; font-weight:600; background: var(--accent); color: var(--bg); border:none; cursor:pointer; transition: filter .15s ease; }
+.btn-primary:hover{ filter:brightness(1.12); }
+.btn-ghost{ display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 13px; border-radius:8px; font-size:12.5px; font-weight:500; background:transparent; color: var(--text-secondary); border:1px solid var(--border); cursor:pointer; transition: all .15s ease; }
+.btn-ghost:hover{ background: var(--bg-elev-2); color: var(--text-primary); border-color:#3a424e; }
+.btn-danger{ display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 13px; border-radius:8px; font-size:12.5px; font-weight:600; background: var(--red-soft); color: var(--red); border:1px solid rgba(240,100,95,.3); cursor:pointer; transition: all .15s ease; }
+.btn-danger:hover{ border-color: rgba(240,100,95,.6); }
+.conf-pill{ font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:2px 8px; border-radius:999px; background: var(--bg-elev-3); color: var(--text-tertiary); }
+.conf-pill.high{ background: var(--green-soft); color: var(--green); }
+.conf-pill.medium{ background: var(--amber-soft); color: var(--amber); }
+.conf-pill.low{ background: var(--red-soft); color: var(--red); }

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Runs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, N = H.net, X = H.charts;
+  var esc = R.esc, em = X.em;
+
+  var ctx = H.shell.mount({ workspace: 'runs', crumb: 'Monitor', title: 'Run analysis' });
+  if (!ctx) return;
+
+  var state = {
+    line: H.shell.param('line', 'L3'),
+    dir: H.shell.param('dir', 'Northbound'),
+    band: H.shell.param('band', 'All'),
+    run: H.shell.param('run', '3N-1106')
+  };
+
+  function seg(id, items, current) {
+    return '<span class="seg" data-seg="' + id + '">' + items.map(function (it) {
+      return '<button data-v="' + esc(it.v) + '"' + (it.v === current ? ' class="on"' : '') + '>' +
+        esc(it.label) + '</button>';
+    }).join('') + '</span>';
+  }
+
+  var filter = { lineId: state.line, direction: state.dir };
+  if (state.band !== 'All') filter.band = state.band;
+  var list = N.runsFor(filter);
+
+  var focus = N.runById(state.run);
+  if (!focus || focus.lineId !== state.line) focus = list[0];
+
+  /* The matched reference: the best comparable run in the same selection.
+     A single run means nothing without the run it should be compared to. */
+  var comparable = N.runsFor({ lineId: focus.lineId, direction: focus.direction, band: focus.band })
+    .filter(function (r) { return r.id !== focus.id; })
+    .sort(function (a, b) { return a.kwhPerKm - b.kwhPerKm; });
+  var reference = comparable.length ? comparable[0] : null;
+
+  var trace = N.runTrace(focus.id);
+  var refTrace = reference ? N.runTrace(reference.id) : null;
+
+  /* --------------------------------------------------------- controls */
+
+  var controls =
+    '<div class="filterbar mb-5">' +
+      '<div class="filter-group"><span class="filter-label">Line</span>' +
+        seg('line', N.LINES.map(function (l) {
+          return { v: l.id, label: (R.lineOf(l.id) || {}).name || l.id };
+        }), state.line) + '</div>' +
+      '<div class="filter-group"><span class="filter-label">Direction</span>' +
+        seg('dir', [{ v: 'Northbound', label: 'NB' }, { v: 'Southbound', label: 'SB' }], state.dir) + '</div>' +
+      '<div class="filter-group"><span class="filter-label">Band</span>' +
+        seg('band', [{ v: 'All', label: 'All' }, { v: 'Peak', label: 'Peak' },
+                     { v: 'Off-peak', label: 'Off-peak' }], state.band) + '</div>' +
+      '<span class="filter-reset mono text-[10.5px]">' + list.length + ' runs in selection</span>' +
+    '</div>';
+
+  /* ----------------------------------------------------- run comparison */
+
+  var deltaKwh = focus.kwh - Math.round((reference ? reference.kwhPerKm : focus.baseline) * focus.km);
+  var compare = reference ? reference : null;
+
+  var header =
+    '<div class="panel mb-5">' +
+      '<div class="panel-head">' +
+        '<div>' +
+          '<div class="flex items-center gap-3">' +
+            '<span class="panel-title">' + esc(focus.id) + '</span>' +
+            (focus.flag ? '<span class="conf-pill">' + esc(focus.flag) + '</span>' : '') +
+          '</div>' +
+          '<div class="panel-sub">' + esc((R.lineOf(focus.lineId) || {}).name) + ' · ' + esc(focus.direction) +
+            ' · unit <a class="cell-link" href="fleet.html?unit=' + esc(focus.unitId) + '">' + esc(focus.unitId) + '</a>' +
+            ' · ' + esc(focus.date) + ' departing ' + esc(focus.departure) + ' · ' + esc(focus.band) + '</div>' +
+        '</div>' +
+        '<div class="panel-actions">' +
+          (focus.caseId
+            ? '<a class="case-link" href="case.html?id=' + esc(focus.caseId) + '">' + esc(focus.caseId) + '</a>'
+            : '<button class="btn-ghost" id="raiseRun">Raise a case</button>') +
+        '</div>' +
+      '</div>' +
+      '<div class="panel-body">' +
+        '<div class="grid grid-cols-7 gap-5 mb-4">' +
+          '<div><div class="stat-label">Intensity</div><div class="num-lg mt-1.5">' + focus.kwhPerKm.toFixed(2) +
+            '<span class="text-[10px] ml-1 muted">kWh/km</span></div>' +
+            '<div class="mt-1">' + X.delta(focus.kwhPerKm, focus.baseline) + '</div></div>' +
+          '<div><div class="stat-label">Total energy</div><div class="num-lg mt-1.5">' + focus.kwh +
+            '<span class="text-[10px] ml-1 muted">kWh</span></div></div>' +
+          '<div><div class="stat-label">Distance</div><div class="num-lg mt-1.5">' + focus.km.toFixed(1) +
+            '<span class="text-[10px] ml-1 muted">km</span></div></div>' +
+          '<div><div class="stat-label">Runtime</div><div class="num-lg mt-1.5">' +
+            Math.floor(focus.runtime / 60) + ':' + (focus.runtime % 60 < 10 ? '0' : '') + (focus.runtime % 60) +
+            '</div></div>' +
+          '<div><div class="stat-label">Dwell total</div><div class="num-lg mt-1.5">' + focus.dwellTotal +
+            '<span class="text-[10px] ml-1 muted">s</span></div></div>' +
+          '<div><div class="stat-label">Regen recovery</div><div class="num-lg mt-1.5">' + focus.regenPct.toFixed(1) +
+            '<span class="text-[10px] ml-1 muted">%</span></div></div>' +
+          '<div><div class="stat-label">Coasting share</div><div class="num-lg mt-1.5">' + focus.coastPct +
+            '<span class="text-[10px] ml-1 muted">%</span></div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  /* --------------------------------------------------------- the trace */
+
+  var lateBrake = focus.coastPct < 22;
+  var profilePanel =
+    '<div class="panel mb-5">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Speed and power against distance</div>' +
+          '<div class="panel-sub">This run against the lowest-intensity comparable run in the same selection.</div></div>' +
+        '<div class="panel-actions">' + R.sref('S3') + '</div>' +
+      '</div>' +
+      '<div class="panel-body">' +
+        X.runProfile(trace, { height: 240, reference: refTrace }) +
+        '<div class="chart-legend">' +
+          '<span class="cl-item"><span class="cl-swatch" style="background:var(--accent)"></span>' +
+            esc(focus.id) + ' · ' + focus.kwhPerKm.toFixed(2) + ' kWh/km</span>' +
+          (reference ? '<span class="cl-item"><span class="cl-swatch dash"></span>' +
+            esc(reference.id) + ' · ' + reference.kwhPerKm.toFixed(2) + ' kWh/km — matched reference</span>' : '') +
+          '<span class="cl-item"><span class="cl-swatch area" style="background:var(--amber)"></span>Power drawn</span>' +
+          '<span class="cl-item"><span class="cl-swatch area" style="background:var(--green)"></span>Power regenerated</span>' +
+        '</div>' +
+        X.note(reference
+          ? 'This run used ' + em(Math.abs(deltaKwh) + ' kWh') + ' ' + (deltaKwh > 0 ? 'more' : 'less') +
+            ' than the matched reference over the same route, direction and service band. ' +
+            'The traces diverge mainly in the ' + em('approach phase') + ': coasting share is ' +
+            em(focus.coastPct + '%') + ' against ' + em(reference.coastPct + '%') + ', and regenerative ' +
+            'recovery is ' + em(focus.regenPct.toFixed(1) + '%') + ' against ' + em(reference.regenPct.toFixed(1) + '%') + '. ' +
+            (lateBrake
+              ? 'Power is held later into each approach and braking begins closer to the stop, which converts energy that could have been recovered into brake heat.'
+              : 'Traction cut-off points are broadly aligned, so the difference is more likely to originate in load, gradient handling or unit condition than in driving style.')
+          : 'No comparable run exists in this selection, so this trace cannot be interpreted as good or bad. ' +
+            'Widen the selection or extend the period before drawing a conclusion.', 'S5') +
+      '</div>' +
+    '</div>';
+
+  /* ------------------------------------------------ hop-by-hop breakdown */
+
+  var hops = N.hopsFor({ lineId: focus.lineId, direction: focus.direction })
+    .sort(function (a, b) { return a.seq - b.seq; });
+  var rnd = N.seed('run-' + focus.id);
+  var rows = hops.map(function (h) {
+    var f = 0.92 + rnd() * 0.22;
+    var v = Math.round(h.kwhPerKm * f * (focus.kwhPerKm / focus.baseline) * 100) / 100;
+    return { hop: h, value: v, excess: Math.round((v - h.baseline) * h.km * 10) / 10 };
+  });
+  var worstRows = rows.slice().sort(function (a, b) { return b.excess - a.excess; }).slice(0, 4);
+  var worstShare = Math.round(worstRows.reduce(function (a, r) { return a + Math.max(0, r.excess); }, 0) /
+    (rows.reduce(function (a, r) { return a + Math.max(0, r.excess); }, 0) || 1) * 100);
+  /* Share of excess against share of route. An even run scores 1.0, so the
+     multiple — not the raw percentage — is what says "concentrated". */
+  var concentration = (worstShare / 100) / (worstRows.length / rows.length);
+  var readsAs = concentration >= 2.5
+    ? 'That is ' + concentration.toFixed(1) + '\u00d7 what an evenly driven run would put in the same ' +
+      'number of hops, which points to a specific location or approach rather than to how the run was ' +
+      'driven as a whole.'
+    : concentration >= 1.6
+      ? 'That is ' + concentration.toFixed(1) + '\u00d7 an even spread \u2014 enough to be worth looking ' +
+        'at those hops first, but not enough on its own to rule out a unit or loading effect across the route.'
+      : 'That is close to an even spread across the route, which is more consistent with unit condition ' +
+        'or loading than with any one location.';
+
+  var breakdown =
+    '<div class="panel mb-5">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Where this run lost energy</div>' +
+          '<div class="panel-sub">Energy above baseline attributed to each hop of the run.</div></div>' +
+      '</div>' +
+      '<div class="panel-body">' +
+        X.rankedBars(rows.slice().sort(function (a, b) { return b.excess - a.excess; }).slice(0, 10).map(function (r) {
+          return {
+            label: r.hop.label, sub: r.hop.km.toFixed(2) + ' km · ' + r.hop.speedClass,
+            value: r.value, baseline: r.hop.baseline,
+            flag: r.excess > 0 ? '+' + r.excess.toFixed(1) + ' kWh' : 'at baseline',
+            href: 'explore.html?line=' + focus.lineId + '&dir=' + encodeURIComponent(focus.direction) +
+                  '&view=contrib&hop=' + r.hop.id
+          };
+        }), { dp: 2 }) +
+        X.note(em(worstShare + '%') + ' of this run\u2019s excess energy occurred in ' +
+          em(worstRows.length + ' of ' + rows.length + ' hops') + ', led by ' +
+          em(worstRows[0].hop.label) + '. ' + readsAs,
+          'S5') +
+      '</div>' +
+    '</div>';
+
+  /* -------------------------------------------------------- the run list */
+
+  var listPanel =
+    '<div class="panel">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Runs in selection</div>' +
+          '<div class="panel-sub">Individual services, most recent first. Select any run to load its trace.</div></div>' +
+      '</div>' +
+      '<div class="panel-body flush"><div class="dt-scroll"><table class="dt"><thead><tr>' +
+        '<th>Run</th><th>Date</th><th>Dep</th><th>Unit</th><th>Band</th>' +
+        '<th class="num">kWh/km</th><th class="num">Gap</th><th class="num">Total</th>' +
+        '<th class="num">Dwell</th><th class="num">Regen</th><th class="num">Coast</th><th>Flag</th>' +
+      '</tr></thead><tbody>' +
+      list.slice(0, 40).map(function (r) {
+        return '<tr class="' + (r.id === focus.id ? 'is-cased' : r.deltaPct > 12 ? 'is-flagged' : '') + '">' +
+          '<td class="key"><a class="cell-link" href="runs.html?line=' + state.line + '&dir=' +
+            encodeURIComponent(state.dir) + '&band=' + encodeURIComponent(state.band) +
+            '&run=' + esc(r.id) + '">' + esc(r.id) + '</a></td>' +
+          '<td class="mono muted">' + esc(r.date.slice(5)) + '</td>' +
+          '<td class="mono">' + esc(r.departure) + '</td>' +
+          '<td class="mono">' + esc(r.unitId) + '</td>' +
+          '<td>' + esc(r.band) + '</td>' +
+          '<td class="num mono" style="color:var(--text-primary)">' + r.kwhPerKm.toFixed(2) + '</td>' +
+          '<td class="num">' + X.delta(r.kwhPerKm, r.baseline) + '</td>' +
+          '<td class="num mono muted">' + r.kwh + '</td>' +
+          '<td class="num mono">' + r.dwellTotal + 's</td>' +
+          '<td class="num mono">' + r.regenPct.toFixed(1) + '%</td>' +
+          '<td class="num mono">' + r.coastPct + '%</td>' +
+          '<td class="text-[10.5px] muted">' + esc(r.flag || '') + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div></div>' +
+      '<div class="panel-foot">Showing ' + Math.min(40, list.length) + ' of ' + list.length +
+        ' runs. Single runs are evidence, not proof — a case requires a population.</div>' +
+    '</div>';
+
+  document.getElementById('main').innerHTML =
+    '<p class="lede mb-5">Individual services and interstation segments, each measured against a matched comparable.</p>' +
+    controls + header + profilePanel + breakdown + listPanel;
+
+  /* -------------------------------------------------------- interaction */
+
+  function go(changes) {
+    var s = {}, k;
+    for (k in state) if (state.hasOwnProperty(k)) s[k] = state[k];
+    for (k in changes) if (changes.hasOwnProperty(k)) s[k] = changes[k];
+    var q = [];
+    for (k in s) if (s.hasOwnProperty(k) && s[k] != null) q.push(k + '=' + encodeURIComponent(s[k]));
+    location.href = 'runs.html?' + q.join('&');
+  }
+
+  var segs = document.querySelectorAll('[data-seg]');
+  for (var i = 0; i < segs.length; i++) {
+    (function (wrap) {
+      var key = wrap.getAttribute('data-seg');
+      var bs = wrap.getElementsByTagName('button');
+      for (var j = 0; j < bs.length; j++) {
+        (function (b) {
+          b.addEventListener('click', function () {
+            var c = {}; c[key] = b.getAttribute('data-v'); c.run = null; go(c);
+          });
+        })(bs[j]);
+      }
+    })(segs[i]);
+  }
+
+  var rb = document.getElementById('raiseRun');
+  if (rb) {
+    rb.addEventListener('click', function () {
+      var unit = N.unitById(focus.unitId);
+      H.raise.open(unit || worstRows[0].hop);
+    });
+  }
+})();
+</script>
+</body>
+</html>

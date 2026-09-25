@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Ledger</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute;
+
+  var ctx = H.shell.mount({ workspace: 'ledger', crumb: 'Record', title: 'Ledger' });
+  if (!ctx) return;
+  var me = ctx.roleId, P = H.PORTFOLIO;
+
+  var closed = Q.closedCases();
+
+  /* A closed case is worth recording whatever the verdict. Rejections and
+     inconclusive results are the entries that keep the number honest. */
+  var VERDICT = {
+    confirmed:    { label: 'Verified',     color: 'var(--green)', note: 'Measured improvement cleared the declared threshold.' },
+    inconclusive: { label: 'Inconclusive', color: 'var(--amber)', note: 'Window completed but the result could not be separated from a confounder.' },
+    rejected:     { label: 'Rejected',     color: 'var(--red)',   note: 'The trade-off was declined at the decision gate.' }
+  };
+
+  var header =
+    '<p class="lede mb-6">Closed cases: modelled saving against measured result. Rejected and inconclusive outcomes are retained for estimate calibration.</p>' +
+
+    '<div class="grid grid-cols-4 gap-3 mb-8">' +
+      R.kpi('Closed', P.closed.total, 'cases',
+        P.closed.verified + ' verified · ' + P.closed.inconclusive + ' inconclusive · ' + P.closed.rejected + ' rejected') +
+      R.kpi('Realisation', P.realisationOnVerified, '%',
+        'Of modelled savings, measured on verified cases only.', 'green') +
+      R.kpi('Verified saving', P.savings.verifiedMWh, 'MWh/yr',
+        'About ' + R.money(P.savings.verifiedValue) + ' a year at current tariff.') +
+      R.kpi('Conversion', P.overallConversion, '%',
+        'Of raised opportunity that reached implementation.') +
+    '</div>';
+
+  function closedCard(c) {
+    var o = c.outcome;
+    var v = VERDICT[o.verdict] || VERDICT.confirmed;
+    return '<div class="surface rounded-xl p-5 mb-4">' +
+      '<div class="flex items-start justify-between gap-6 mb-4">' +
+        '<div style="min-width:0">' +
+          '<div class="mono text-[11px]" style="color:var(--text-tertiary)">' + R.esc(c.id) +
+            ' · closed ' + R.esc(String(o.at).slice(0, 10)) + '</div>' +
+          '<div class="text-[15px] font-semibold mt-1">' + R.esc(c.title) + '</div>' +
+          '<div class="text-[12px] mt-1" style="color:var(--text-secondary)">' + R.esc(R.whereOf(c)) + '</div>' +
+        '</div>' +
+        '<span class="action-class" style="flex-shrink:0;background:var(--bg-elev-3);color:' + v.color + '">' +
+          R.esc(v.label) + '</span>' +
+      '</div>' +
+
+      R.realisationBar(c) +
+
+      '<div class="text-[12.5px] mt-4" style="line-height:1.65">' + R.esc(o.reasoning) + '</div>' +
+
+      '<div class="mt-4 pt-4 grid grid-cols-3 gap-4" style="border-top:1px solid var(--border-soft)" data-depth-min="L2">' +
+        '<div><div class="stat-label">Measured on</div>' +
+          '<div class="text-[12px] mt-1" style="color:var(--text-secondary)">' + R.esc(c.plan.basis) + '</div></div>' +
+        '<div><div class="stat-label">Window</div>' +
+          '<div class="text-[12px] mt-1" style="color:var(--text-secondary)">' + R.esc(c.plan.window) +
+            ' · threshold ' + R.esc(c.plan.threshold) + '</div></div>' +
+        '<div><div class="stat-label">Confirmed by</div>' +
+          '<div class="text-[12px] mt-1" style="color:var(--text-secondary)">' + R.esc(o.by) + '</div></div>' +
+      '</div>' +
+
+      '<div class="mt-4" data-depth-min="L3">' +
+        '<div class="stat-label mb-2">What was watched, and what it was assessed as</div>' +
+        R.confounderRows(c) +
+      '</div>' +
+
+      '<div class="mt-4 pt-3.5 flex items-center gap-2" style="border-top:1px solid var(--border-soft)">' +
+        R.sref('S10') + R.sref('S11') +
+        '<a class="btn-ghost ml-auto" href="case.html?id=' + R.esc(c.id) + '">Open the full record</a>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /* what this ledger is actually for: correcting the next estimate */
+  var feedback =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="flex items-center gap-2 mb-1">' +
+        '<div class="text-[13.5px] font-semibold">What the ledger changes</div>' +
+        '<span class="ml-auto">' + R.sref('S11') + '</span></div>' +
+      '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6">' +
+        'Closed results are not just reported. Realisation by lever is fed back into case ranking, ' +
+        'so the next estimate of the same lever type is discounted by how that lever has actually behaved.</div>' +
+      H.PRECEDENT.map(function (p) {
+        var measured = p.verified != null && p.realisation != null;
+        return '<div class="flex items-center gap-3 py-2.5" style="border-top:1px solid var(--border-soft)">' +
+          '<span class="mono text-[11px]" style="color:var(--text-tertiary);width:60px">' + R.esc(p.caseId) + '</span>' +
+          '<span class="text-[12px]" style="color:var(--text-secondary);flex:1">' + R.esc(p.lever) + '</span>' +
+          '<span class="text-[10.5px]" style="color:var(--text-tertiary);width:74px">' + R.esc(p.window) + '</span>' +
+          '<span class="mono text-[11.5px]" style="color:var(--text-secondary);width:126px;text-align:right">' +
+            (measured ? p.modelled + ' → ' + p.verified + ' MWh'
+                      : p.modelled + ' MWh · not measurable') + '</span>' +
+          '<span class="mono text-[12.5px] font-bold" style="width:44px;text-align:right;color:' +
+            (!measured ? 'var(--text-tertiary)' : p.realisation >= 85 ? 'var(--green)' : 'var(--amber)') + '">' +
+            (measured ? p.realisation + '%' : '—') + '</span>' +
+        '</div>';
+      }).join('') +
+      '<div class="text-[11px] mt-3 pt-3" style="border-top:1px solid var(--border-soft);color:var(--text-tertiary);line-height:1.55">' +
+        'Inconclusive cases are excluded from realisation so they cannot inflate it, but they remain ' +
+        'counted in conversion so the cost of an unmeasurable case is still visible.</div>' +
+    '</div>';
+
+  /* live interventions whose result is not in yet */
+  var TREND = {
+    'on track':  'var(--green)',
+    'too early': 'var(--text-tertiary)',
+    'at risk':   'var(--amber)'
+  };
+  var measuring =
+    '<div class="surface rounded-xl p-5 mb-8">' +
+      '<div class="flex items-center gap-2 mb-1">' +
+        '<div class="text-[13.5px] font-semibold">In measurement</div>' +
+        '<span class="ml-auto">' + R.sref('S10') + '</span></div>' +
+      '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6">' +
+        'Implemented changes inside their declared measurement window. No result is claimed until the ' +
+        'window closes and the plan\u2019s threshold is tested.</div>' +
+      H.VERIFYING.map(function (v) {
+        var pct = Math.round(v.elapsedWeeks / v.totalWeeks * 100);
+        return '<div class="py-3.5" style="border-top:1px solid var(--border-soft)">' +
+          '<div class="flex items-baseline gap-3 mb-2">' +
+            '<span class="mono text-[11px]" style="color:var(--text-tertiary)">' + R.esc(v.caseId) + '</span>' +
+            '<span class="text-[12.5px] font-semibold">' + R.esc(v.lever) + '</span>' +
+            '<span class="text-[11.5px]" style="color:var(--text-secondary)">' + R.esc(v.scope) + '</span>' +
+            '<span class="ml-auto text-[11px] font-semibold" style="color:' +
+              (TREND[v.trend] || 'var(--text-tertiary)') + '">' + R.esc(v.trend) + '</span></div>' +
+          '<div class="window-track"><span style="width:' + pct + '%"></span></div>' +
+          '<div class="flex items-baseline gap-3 mt-2">' +
+            '<span class="mono text-[10.5px]" style="color:var(--text-tertiary)">week ' +
+              v.elapsedWeeks + ' of ' + v.totalWeeks + '</span>' +
+            '<span class="mono text-[10.5px]" style="color:var(--text-tertiary)">' +
+              v.modelled + ' MWh/yr modelled</span></div>' +
+          '<div class="text-[11px] mt-1.5" style="color:var(--text-secondary);line-height:1.55">' +
+            R.esc(v.trendDetail) + '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+
+  /* declined and inconclusive are a pattern worth reading */
+  var declined =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="text-[13.5px] font-semibold mb-1">Where opportunity is being lost</div>' +
+      '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6">' +
+        'Conversion by currency, read as a decision pattern rather than an analysis problem.</div>' +
+      P.conversionByCurrency.map(function (r) {
+        var cur = H.CURRENCIES[r.currency];
+        var lost = r.raised - r.converted;
+        return '<div class="py-3" style="border-top:1px solid var(--border-soft)">' +
+          '<div class="flex items-baseline justify-between mb-1">' +
+            '<span class="text-[12.5px] font-semibold">' + R.esc(cur.label) + '</span>' +
+            '<span class="mono text-[12px] font-bold" style="color:' +
+              (r.pct >= 80 ? 'var(--green)' : r.pct > 0 ? 'var(--amber)' : 'var(--red)') + '">' + r.pct + '%</span></div>' +
+          '<div class="text-[11px]" style="color:var(--text-secondary);line-height:1.55">' +
+            (lost > 0 ? lost + ' MWh/yr raised but not converted. ' : 'All raised opportunity converted. ') +
+            R.esc(cur.desc) + '.</div>' +
+        '</div>';
+      }).join('') +
+      '<div class="text-[11px] mt-3 pt-3" style="border-top:1px solid var(--border-soft);color:var(--text-tertiary);line-height:1.55">' +
+        'Capacity-spending opportunities have never converted. That is a governance question for the ' +
+        'currency holder, not a reason to stop raising them.</div>' +
+    '</div>';
+
+  document.getElementById('main').innerHTML =
+    header +
+    measuring +
+    R.queueGroup('Closed cases', closed.length, 'result on record') +
+    closed.map(closedCard).join('') +
+    '<div class="grid grid-cols-2 gap-4 mt-6">' + feedback + declined + '</div>';
+})();
+</script>
+</body>
+</html>

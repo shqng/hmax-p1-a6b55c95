@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Portfolio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+<style>
+  .funnel-stage{ display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px; padding:10px 0; }
+  .funnel-bar{ height:26px; border-radius:5px; display:flex; align-items:center; padding:0 9px; font-size:11px; font-weight:700; min-width:52px; }
+    .funnel-bar.is-scanned{ background:var(--bg-elev-3); color:var(--text-secondary); box-shadow:inset 0 0 0 1px var(--border); }
+    .funnel-bar.is-correlated{ background:#5f6a7a; color:#fff; }
+    .funnel-bar.is-promoted{ background:var(--accent); color:#fff; }
+  .conv-row{ display:grid; grid-template-columns:110px 1fr 56px; align-items:center; gap:12px; padding:8px 0; border-top:1px solid var(--border-soft); }
+  .conv-track{ height:7px; border-radius:4px; background:var(--bg-elev-3); overflow:hidden; }
+  .conv-fill{ height:100%; border-radius:4px; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute;
+
+  var ctx = H.shell.mount({ workspace: 'portfolio', crumb: 'Position', title: 'Portfolio' });
+  if (!ctx) return;
+  var me = ctx.roleId;
+  var P = H.PORTFOLIO, S = H.HELD_SIGNALS;
+
+  /* ---------- 1. is performance moving, and is it real ---------- */
+
+  var header =
+    '<p class="lede mb-6">Traction energy position for ' + R.esc(P.period) + '. Committed savings are approved to deliver; verified savings have been confirmed by measurement.</p>' +
+
+    '<div class="grid grid-cols-4 gap-3 mb-8">' +
+      R.kpi('Network intensity', P.intensity.current, P.intensity.unit,
+        '<span style="color:var(--green)">' + P.intensity.changePct + '%</span> against a ' +
+        P.intensity.baseline + ' ' + P.intensity.unit + ' baseline — ' + P.intensity.direction + '.') +
+      R.kpi('Verified savings', P.savings.verifiedMWh, 'MWh/yr',
+        'Measured after closure. Worth about ' + R.money(P.savings.verifiedValue) + ' a year.', 'green') +
+      R.kpi('Committed', P.savings.committedMWh, 'MWh/yr',
+        'Approved and released. ' + P.realisationOnVerified + '% of modelled savings survive verification.') +
+      R.kpi('In flight', P.savings.inFlightMWh, 'MWh/yr',
+        'Modelled but not yet approved or verified. Not counted as a saving.') +
+    '</div>';
+
+  /* ---------- 2. where is the pipeline actually losing value ---------- */
+
+  var CUR_COLOR = { none: 'var(--green)', time: 'var(--amber)', capacity: 'var(--red)', capital: 'var(--blue)' };
+
+  var conversion =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="text-[13.5px] font-semibold">Where the pipeline loses value</div>' +
+      '<div class="text-[11.5px] mt-1 mb-4" style="color:var(--text-secondary);line-height:1.6">' +
+        'Opportunities are grouped by what they spend, not by size. Cases that cost nothing convert ' +
+        'almost always; cases that spend capacity currently never convert at all — which is a decision ' +
+        'problem, not an analysis problem.</div>' +
+      P.conversionByCurrency.map(function (r) {
+        var cur = H.CURRENCIES[r.currency];
+        return '<div class="conv-row">' +
+          '<div><div class="text-[12px] font-semibold">' + R.esc(cur.label) + '</div>' +
+            '<div class="text-[10px]" style="color:var(--text-tertiary)">' + R.esc(cur.approver.toUpperCase()) + ' approves</div></div>' +
+          '<div><div class="conv-track"><div class="conv-fill" style="width:' + r.pct + '%;background:' + CUR_COLOR[r.currency] + '"></div></div>' +
+            '<div class="text-[10.5px] mt-1" style="color:var(--text-tertiary)">' + r.converted + ' of ' + r.raised + ' MWh raised</div></div>' +
+          '<div class="mono text-[14px] font-bold" style="text-align:right;color:' + CUR_COLOR[r.currency] + '">' + r.pct + '%</div>' +
+        '</div>';
+      }).join('') +
+      '<div class="mt-4 pt-3.5" style="border-top:1px solid var(--border-soft)">' +
+        '<div class="flex items-baseline justify-between">' +
+          '<span class="text-[12px]" style="color:var(--text-secondary)">Overall conversion</span>' +
+          '<span class="mono text-[15px] font-bold">' + P.overallConversion + '%</span></div>' +
+      '</div>' +
+    '</div>';
+
+  /* ---------- 3. does modelling survive contact with measurement ---------- */
+
+  var realisation =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="text-[13.5px] font-semibold">Does the modelling hold up</div>' +
+      '<div class="text-[11.5px] mt-1 mb-4" style="color:var(--text-secondary);line-height:1.6">' +
+        'Modelled against verified saving, by lever type. These ratios are fed back into case ranking ' +
+        'so estimates are discounted by how that lever has actually performed.</div>' +
+      P.realisationByLever.map(function (r) {
+        /* A lever with no verified case yet has no ratio — that is different
+           from a ratio of zero, and must not be drawn as a failure. */
+        var known = r.pct != null;
+        var good = known && r.pct >= 85;
+        var col = !known ? 'var(--text-tertiary)' : good ? 'var(--green)' : 'var(--amber)';
+        return '<div class="conv-row" style="grid-template-columns:130px 1fr 56px">' +
+          '<div><div class="text-[12px] font-semibold">' + R.esc(r.lever) + '</div>' +
+            '<div class="text-[10px]" style="color:var(--text-tertiary)">' + r.cases +
+              (r.cases === 1 ? ' closed' : ' closed') + '</div></div>' +
+          '<div><div class="conv-track">' +
+            (known ? '<div class="conv-fill" style="width:' + Math.min(r.pct, 100) + '%;background:' + col + '"></div>' : '') +
+            '</div>' +
+            '<div class="text-[10.5px] mt-1" style="color:var(--text-tertiary)">' +
+              (known ? r.verified + ' verified of ' + r.modelled + ' modelled MWh'
+                     : r.modelled + ' MWh modelled — still inside its measurement window') + '</div></div>' +
+          '<div class="mono text-[14px] font-bold" style="text-align:right;color:' + col + '">' +
+            (known ? r.pct + '%' : '—') + '</div>' +
+        '</div>';
+      }).join('') +
+      '<div class="mt-4 pt-3.5 flex items-center gap-2" style="border-top:1px solid var(--border-soft)">' +
+        R.smartTag('Fed into ranking') + R.sref('S11') +
+      '</div>' +
+    '</div>';
+
+  /* ---------- 4. what is coming, and what was held back ---------- */
+
+  var maxF = S.scanned24h;
+  function funnelRow(label, n, note, tone) {
+    var w = Math.max(6, (n / maxF) * 100);
+    return '<div class="funnel-stage">' +
+      '<div><div class="funnel-bar ' + (tone || 'is-promoted') + '" style="width:' + w + '%">' + n + '</div>' +
+        '<div class="text-[11px] mt-1.5" style="color:var(--text-secondary)">' + R.esc(label) +
+        ' <span style="color:var(--text-tertiary)">— ' + R.esc(note) + '</span></div></div>' +
+    '</div>';
+  }
+
+  var funnel =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="flex items-center gap-2">' +
+        '<div class="text-[13.5px] font-semibold">What reached the caseload</div>' +
+        '<span class="ml-auto">' + R.sref('S1') + '</span></div>' +
+      '<div class="text-[11.5px] mt-1 mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+        'Deviations are clustered by probable cause and only promoted when they clear a completeness ' +
+        'and sample threshold. Everything held back is held for a named reason.</div>' +
+      funnelRow('Deviations scanned', S.scanned24h, 'last 24 hours', 'is-scanned') +
+      funnelRow('Correlated into candidates', S.correlated, 'clustered by probable cause', 'is-correlated') +
+      funnelRow('Promoted for acceptance', S.promoted, 'cleared the threshold') +
+      '<div class="mt-4 pt-3.5" style="border-top:1px solid var(--border-soft)">' +
+        '<div class="stat-label mb-2">Held below the line</div>' +
+        S.held.map(function (h) {
+          return '<div class="flex items-center justify-between py-1.5 text-[11.5px]">' +
+            '<span style="color:var(--text-secondary)">' + R.esc(h.reason) + '</span>' +
+            '<span class="mono font-bold" style="color:var(--text-tertiary)">' + h.count + '</span></div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+
+  /* ---------- 5. candidates awaiting acceptance ---------- */
+
+  var candidates =
+    '<div id="candidates">' +
+      R.queueGroup('Candidates awaiting acceptance', H.CANDIDATES.length, 'not yet cases') +
+      H.CANDIDATES.map(function (cd) {
+        return '<div class="queue-row" style="cursor:default">' +
+          '<div style="min-width:0">' +
+            '<div class="qr-id">' + R.esc(cd.id) + ' · <span style="color:var(--text-tertiary)">' +
+              R.esc(cd.confidence) + ' confidence</span></div>' +
+            '<div class="qr-title">' + R.esc(cd.title) + '</div>' +
+            '<div class="qr-where">' + R.esc(cd.scope) + ' · ' + cd.runs + ' runs · ' +
+              cd.completeness + '% complete</div>' +
+            '<div class="text-[11.5px] mt-2" data-depth-min="L2" style="color:var(--text-secondary);line-height:1.55">' +
+              R.esc(cd.reading.v) + '</div>' +
+            '<div class="mt-1.5" data-depth-min="L2">' + R.provenance(cd.reading) + '</div>' +
+          '</div>' +
+          '<div><span class="stage-pill" style="background:var(--bg-elev-3);color:var(--text-secondary)">Candidate</span></div>' +
+          '<div class="queue-need gate"><span class="qn-what">Accept or decline</span>' +
+            '<span class="qn-who">' + R.esc(H.ROLES.epm.person) + '</span></div>' +
+          '<div><div class="qr-impact">' + cd.annualMWh + '</div>' +
+            '<div class="qr-impact-unit" style="text-align:right">MWh/yr</div></div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+
+  /* ---------- 6. at risk ---------- */
+
+  var SEV = { high: 'var(--red)', medium: 'var(--amber)', low: 'var(--text-tertiary)' };
+  var atRisk =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="text-[13.5px] font-semibold mb-1">Cases at risk</div>' +
+      '<div class="text-[11.5px] mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+        'Raised where a case has stopped moving, not where it is merely slow.</div>' +
+      P.atRisk.map(function (r) {
+        return '<a class="flex items-center gap-3 py-2.5" href="case.html?id=' + R.esc(r.caseId) + '" ' +
+          'style="border-top:1px solid var(--border-soft)">' +
+          '<span style="width:6px;height:6px;border-radius:50%;background:' + SEV[r.severity] + ';flex-shrink:0"></span>' +
+          '<span class="mono text-[11px]" style="color:var(--text-tertiary)">' + R.esc(r.caseId) + '</span>' +
+          '<span class="text-[12px]" style="color:var(--text-secondary)">' + R.esc(r.why) + '</span>' +
+        '</a>';
+      }).join('') +
+    '</div>';
+
+  /* ---------- 7. pipeline ---------- */
+
+  var pipeline =
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="text-[13.5px] font-semibold mb-3">Pipeline by stage</div>' +
+      '<div class="flex items-end gap-2" style="height:96px">' +
+        P.pipeline.map(function (s) {
+          var max = 3;
+          var h = Math.max(4, (s.count / max) * 74);
+          return '<div style="flex:1;text-align:center">' +
+            '<div class="mono text-[11px] font-bold mb-1" style="color:' +
+              (s.count ? 'var(--text-primary)' : 'var(--text-tertiary)') + '">' + s.count + '</div>' +
+            '<div style="height:' + h + 'px;border-radius:4px 4px 0 0;background:var(--accent);opacity:' +
+              (s.count ? (0.35 + 0.65 * (s.count / max)) : 0.12) + '"></div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div class="flex gap-2 mt-2">' +
+        P.pipeline.map(function (s) {
+          return '<div style="flex:1;text-align:center" class="text-[10px]" >' +
+            '<span style="color:var(--text-tertiary)">' + R.esc(H.STAGES.filter(function (x) { return x.key === s.stage; })[0].label) + '</span></div>';
+        }).join('') +
+      '</div>' +
+      '<div class="mt-4 pt-3.5 text-[11.5px]" style="border-top:1px solid var(--border-soft);color:var(--text-secondary);line-height:1.6">' +
+        P.closed.total + ' cases closed to date — ' + P.closed.verified + ' verified, ' +
+        P.closed.inconclusive + ' inconclusive, ' + P.closed.rejected + ' rejected. ' +
+        'Inconclusive cases are excluded from realisation but still counted in conversion.</div>' +
+    '</div>';
+
+  document.getElementById('main').innerHTML =
+    header +
+    '<div class="grid grid-cols-2 gap-4 mb-4">' + conversion + realisation + '</div>' +
+    '<div class="grid grid-cols-3 gap-4 mb-8">' + funnel + pipeline + atRisk + '</div>' +
+    candidates;
+})();
+</script>
+</body>
+</html>

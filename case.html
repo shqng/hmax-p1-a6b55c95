@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Case</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+<style>
+  .tabpanel{ display:none; }
+  .tabpanel.active{ display:block; }
+  .tab-rail{ display:flex; align-items:stretch; gap:0; border-bottom:1px solid var(--border-soft); }
+  .tab-item{ position:relative; padding:11px 18px 10px; cursor:pointer; border-bottom:2px solid transparent; transition:all .15s ease; }
+  .tab-item:hover{ background:var(--bg-elev-2); }
+  .tab-item.active{ border-bottom-color:var(--accent); background:var(--bg-elev-2); }
+  .tab-step{ font-family:'IBM Plex Mono',monospace; font-size:9.5px; font-weight:700; letter-spacing:.06em; color:var(--text-tertiary); }
+  .tab-name{ font-size:12.5px; font-weight:600; color:var(--text-tertiary); margin-top:1px; }
+  .tab-item.active .tab-name{ color:var(--text-primary); }
+  .tab-item.done .tab-name{ color:var(--text-secondary); }
+  .tab-item.done .tab-step{ color:var(--green); }
+  .tab-item.locked{ opacity:.42; cursor:not-allowed; }
+  .tab-item.locked:hover{ background:none; }
+  .ev-block{ display:grid; grid-template-columns:1fr 340px; gap:20px; padding:18px 0; border-top:1px solid var(--border-soft); }
+  .ind-row{ display:flex; gap:9px; padding:6px 0; font-size:11.5px; line-height:1.55; }
+  .ind-mark{ width:14px; flex-shrink:0; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-6"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute, N = H.net;
+
+  var id = H.shell.param('id', H.SPINE);
+  var c = Q.caseById(id) || Q.caseById(H.SPINE);
+
+  var ctx = H.shell.mount({
+    workspace: 'case',
+    crumb: 'Case record · ' + c.id,
+    title: c.title
+  });
+  if (!ctx) return;
+  var me = ctx.roleId;
+
+  var bl = Q.baselineById(c.baselineId);
+  var stageIdx = C.stageIndex(c);
+  var na = C.nextAction(c);
+
+  /* ======================================================= case header */
+
+  var lever = c.levers && c.levers[0];
+  var cur = lever ? H.CURRENCIES[lever.currency] : null;
+
+  var header =
+    '<div class="flex items-start justify-between gap-8 mb-5">' +
+      '<div style="min-width:0">' +
+        '<div class="flex items-center gap-2.5 mb-1.5">' +
+          '<span class="mono text-[12px]" style="color:var(--text-tertiary)">' + R.esc(c.id) + '</span>' +
+          '<span class="stage-pill" style="background:var(--bg-elev-3);color:var(--text-secondary)">' +
+            R.esc(C.stageLabel(c)) + '</span>' +
+          (cur ? '<span class="currency-chip">Spends ' + R.esc(String(cur.label).toLowerCase()) + '</span>' : '') +          (c.confidenceDetail ? '<span class="conf-pill ' + R.esc(c.confidenceDetail.tier) + '">' +
+            R.esc(c.confidenceDetail.tier) + ' confidence</span>' : '') +
+        '</div>' +
+        '<h1 class="text-[22px] font-semibold" style="letter-spacing:-.02em;line-height:1.25">' + R.esc(c.title) + '</h1>' +
+        '<div class="text-[12.5px] mt-1.5" style="color:var(--text-secondary)">' + R.esc(R.whereOf(c)) +
+          ' · ' + R.esc(c.scope.services) + '</div>' +
+      '</div>' +
+      '<div class="flex gap-6" style="flex-shrink:0">' +
+        '<div style="text-align:right">' +
+          '<div class="mono text-[26px] font-bold" style="letter-spacing:-.02em">' +
+            (c.metrics.annualMWh || '—') + '</div>' +
+          '<div class="text-[10.5px]" style="color:var(--text-tertiary)">MWh/yr ' +
+            (c.outcome ? 'modelled' : 'estimated') + '</div></div>' +
+        '<div style="text-align:right">' +
+          '<div class="mono text-[26px] font-bold" style="letter-spacing:-.02em;color:var(--text-secondary)">' +
+            R.money(c.metrics.annualValue) + '</div>' +
+          '<div class="text-[10.5px]" style="color:var(--text-tertiary)">per year</div></div>' +
+      '</div>' +
+    '</div>';
+
+  /* ======================================================= tab rail */
+
+  var TABS = [
+    { id: 'tab-overview',     name: 'Readiness', stage: 0 },
+    { id: 'tab-evidence',     name: 'Evidence',  stage: 1 },
+    { id: 'tab-options',      name: 'Scenario',  stage: 2 },
+    { id: 'tab-decision',     name: 'Decision',  stage: 3 },
+    { id: 'tab-verification', name: 'Result',    stage: 4 }
+  ];
+
+  var rail = '<div class="tab-rail mb-6">' + TABS.map(function (t, i) {
+    var done = stageIdx > t.stage;
+    var current = stageIdx === t.stage || (t.stage === 4 && stageIdx >= 4);
+    var locked = stageIdx < t.stage && !(t.stage === 4 && stageIdx >= 4);
+    var cls = current ? 'active' : done ? 'done' : locked ? 'locked' : '';
+    return '<div class="tab-item ' + cls + '" data-tab="' + t.id + '">' +
+      '<div class="tab-step">' + (done ? '✓ ' : '') + 'STEP ' + (i + 1) + '</div>' +
+      '<div class="tab-name">' + R.esc(t.name) + '</div></div>';
+  }).join('') + '</div>';
+
+  /* ======================================================= 1. READINESS */
+
+  /* The chain is derived from the case, not written per screen: who opened it,
+     who built it, which specialist ruled, and who holds the pen now. */
+  function handoverChain(k) {
+    var out = [];
+    out.push({
+      from: 'epm', to: k.assignee || 'analyst',
+      ask: 'Build the case: confirm a qualifying baseline and establish the size of the gap.',
+      when: k.opened, state: 'done'
+    });
+
+    if (k.attribution && k.attribution.confirmed) {
+      var branch = k.attribution.confirmed.v;
+      var specialist = branch === 'technical' ? 'rse' : branch === 'operational' ? 'opm' : 'analyst';
+      out.push({
+        from: k.assignee || 'analyst', to: specialist,
+        ask: 'Rule on whether the cause is ' + branch + ' before levers are explored.',
+        when: String(k.attribution.confirmed.at || '').slice(0, 10), state: 'done'
+      });
+    }
+
+    var next = C.nextAction(k);
+    if (next.role && next.role !== (k.assignee || 'analyst') && next.tone !== 'done') {
+      out.push({
+        from: k.assignee || 'analyst', to: next.role,
+        ask: (k.decisionPending && k.decisionPending.asks) || next.what + '.',
+        when: k.awaiting && k.awaiting.since ? String(k.awaiting.since).slice(0, 10) : '',
+        state: next.tone === 'blocked' ? 'blocked' : 'open'
+      });
+    }
+    return out;
+  }
+
+  var handovers = handoverChain(c);
+
+  var hypothesis = c.hypothesis && c.hypothesis.v ? c.hypothesis.v : String(c.hypothesis || '');
+
+  var tabOverview =
+    '<div class="grid grid-cols-3 gap-5">' +
+
+      '<div style="grid-column:span 2;min-width:0">' +
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="stat-label mb-2">The case</div>' +
+          '<div class="text-[14px]" style="line-height:1.65">' + R.esc(hypothesis) + '</div>' +
+          '<div class="grid grid-cols-4 gap-4 mt-5 pt-4" style="border-top:1px solid var(--border-soft)">' +
+            '<div><div class="stat-label">Observed</div><div class="mono text-[17px] font-bold mt-1">' +
+              c.metrics.observed + '</div><div class="text-[10px]" style="color:var(--text-tertiary)">' + R.esc(c.metrics.unit) + '</div></div>' +
+            '<div><div class="stat-label">Baseline</div><div class="mono text-[17px] font-bold mt-1" style="color:var(--text-secondary)">' +
+              c.metrics.baseline + '</div><div class="text-[10px]" style="color:var(--text-tertiary)">' + R.esc(bl.id + ' ' + bl.version) + '</div></div>' +
+            '<div><div class="stat-label">Gap</div><div class="mono text-[17px] font-bold mt-1" style="color:var(--amber)">' +
+              c.metrics.gap + '</div><div class="text-[10px]" style="color:var(--text-tertiary)">' +
+              ((c.metrics.gap / c.metrics.baseline) * 100).toFixed(1) + '% above</div></div>' +
+            '<div><div class="stat-label">Sample</div><div class="mono text-[17px] font-bold mt-1">' +
+              c.metrics.runs + '</div><div class="text-[10px]" style="color:var(--text-tertiary)">matched runs</div></div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="flex items-center justify-between mb-1">' +
+            '<div class="text-[13.5px] font-semibold">Decision readiness</div>' +
+            '<div style="width:170px">' + R.readinessMeter(c) + '</div></div>' +
+          '<div class="text-[11.5px] mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+            'A case cannot be put to a decision-maker until every question below is answered. ' +
+            'Each answer names who settled it, so an approver is never asked to take the analysis on trust.</div>' +
+          R.readinessList(c) +
+        '</div>' +
+
+        '<div class="surface rounded-xl p-5" data-depth-min="L3">' +
+          '<div class="text-[13.5px] font-semibold mb-1">Full trail</div>' +
+          '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6">' +
+            'Every automated step and every human judgement, in order. Nothing in this case was produced ' +
+            'without an entry here.</div>' +
+          R.trail(c) +
+        '</div>' +
+      '</div>' +
+
+      '<div style="min-width:0">' +
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="stat-label mb-2.5">Where it came from</div>' +
+          '<div class="text-[12px]" style="color:var(--text-secondary);line-height:1.6">' + R.esc(c.origin.note) + '</div>' +
+          '<div class="flex items-center gap-2 mt-3">' + R.smartTag('Detected') + R.sref('S1') +
+            '<span class="mono text-[10.5px] ml-auto" style="color:var(--text-tertiary)">' + R.esc(c.origin.ref) + '</span></div>' +
+        '</div>' +
+
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="stat-label mb-3">Who has held this case</div>' +
+          handovers.map(function (h) {
+            return '<div class="mb-2.5">' + R.handover(h.from, h.to, h.ask, h.when, h.state) + '</div>';
+          }).join('') +
+          '<div class="text-[11px] mt-1" style="color:var(--text-tertiary);line-height:1.55">' +
+            'Each handover carries a specific ask. An unaccepted handover escalates rather than ' +
+            'waiting silently.</div>' +
+          '<div class="mt-2">' + R.sref('S8') + '</div>' +
+        '</div>' +
+
+        (c.confidenceDetail ?
+        '<div class="surface rounded-xl p-5" data-depth-min="L2">' +
+          '<div class="flex items-center justify-between mb-2">' +
+            '<div class="stat-label">Confidence</div>' +
+            '<span class="conf-pill ' + R.esc(c.confidenceDetail.tier) + '">' + R.esc(c.confidenceDetail.tier) + '</span></div>' +
+          '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+            (c.confidenceDetail.limitedBy
+              ? 'Limited by ' + R.esc(String(c.confidenceDetail.limitedBy).toLowerCase()) + '.'
+              : 'No input is currently limiting this tier.') + '</div>' +
+          '<div class="mt-3 pt-3 grid grid-cols-2 gap-3" style="border-top:1px solid var(--border-soft)" data-depth-min="L3">' +
+            '<div><div class="text-[10px]" style="color:var(--text-tertiary)">Completeness</div>' +
+              '<div class="mono text-[13px] font-bold mt-0.5">' + c.confidenceDetail.inputs.completeness + '%</div></div>' +
+            '<div><div class="text-[10px]" style="color:var(--text-tertiary)">Runs</div>' +
+              '<div class="mono text-[13px] font-bold mt-0.5">' + c.confidenceDetail.inputs.runs + '</div></div>' +
+            '<div><div class="text-[10px]" style="color:var(--text-tertiary)">Comparability</div>' +
+              '<div class="text-[12px] font-semibold mt-0.5" style="text-transform:capitalize">' + R.esc(c.confidenceDetail.inputs.comparability) + '</div></div>' +
+            '<div><div class="text-[10px]" style="color:var(--text-tertiary)">Model</div>' +
+              '<div class="text-[12px] font-semibold mt-0.5" style="text-transform:capitalize">' + R.esc(c.confidenceDetail.inputs.modelApplicability) + '</div></div>' +
+          '</div>' +
+          '<div class="mt-3 flex items-center gap-2">' + R.smartTag('Continuously scored') + R.sref('S4') + '</div>' +
+          '<div class="text-[10.5px] mt-2" style="color:var(--text-tertiary);line-height:1.5">' +
+            'This tier is evidence about the case and cannot be raised by hand.</div>' +
+        '</div>' : '') +
+      '</div>' +
+    '</div>';
+
+  /* ======================================================= 2. EVIDENCE */
+
+  var attr = c.attribution;
+  var attrBlock = attr ?
+    '<div class="surface rounded-xl p-5 mb-5">' +
+      '<div class="flex items-start justify-between gap-6 mb-3">' +
+        '<div>' +
+          '<div class="text-[13.5px] font-semibold">Where the cause sits</div>' +
+          '<div class="text-[11.5px] mt-1" style="color:var(--text-secondary);line-height:1.6;max-width:62ch">' +
+            'A single branch is proposed rather than a list of possibilities, because the branch determines ' +
+            'which specialist rules on the case and which levers are even available.</div>' +
+        '</div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div class="text-[19px] font-semibold" style="text-transform:capitalize">' +
+            R.esc((attr.confirmed || attr.proposed).v) + '</div>' +
+          '<div class="text-[10.5px]" style="color:var(--text-tertiary)">' +
+            (attr.confirmed ? 'confirmed' : 'proposed, not yet ruled') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="flex items-center gap-2 mb-4">' + R.provenance(attr.proposed, { label: 'Proposed' }) +
+        (attr.confirmed ? '<span style="color:var(--text-tertiary)">→</span>' + R.provenance(attr.confirmed) : '') + '</div>' +
+      '<div class="grid grid-cols-2 gap-6 pt-4" style="border-top:1px solid var(--border-soft)">' +
+        '<div><div class="stat-label mb-1.5" style="color:var(--green)">Supports this branch</div>' +
+          attr.indicators.supports.map(function (s) {
+            return '<div class="ind-row"><span class="ind-mark" style="color:var(--green)">+</span>' +
+              '<span style="color:var(--text-secondary)">' + R.esc(s) + '</span></div>';
+          }).join('') + '</div>' +
+        '<div><div class="stat-label mb-1.5" style="color:var(--amber)">Argues against it</div>' +
+          attr.indicators.contradicts.map(function (s) {
+            return '<div class="ind-row"><span class="ind-mark" style="color:var(--amber)">−</span>' +
+              '<span style="color:var(--text-secondary)">' + R.esc(s) + '</span></div>';
+          }).join('') +
+          '<div class="text-[11px] mt-2" style="color:var(--text-tertiary);line-height:1.55">' +
+            'Contradicting evidence is carried forward rather than discarded — here it became case ' +
+            '<a href="case.html?id=EC-2051" style="color:var(--blue)">EC-2051</a>.</div></div>' +
+      '</div>' +
+    '</div>' : '';
+
+  var baselineBlock =
+    '<div class="surface rounded-xl p-5 mb-5">' +
+      '<div class="flex items-start justify-between gap-6 mb-3">' +
+        '<div><div class="text-[13.5px] font-semibold">What it is being compared against</div>' +
+          '<div class="text-[11.5px] mt-1" style="color:var(--text-secondary);line-height:1.6;max-width:62ch">' +
+            R.esc(bl.label) + '. ' + R.esc(bl.method) + '</div></div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<div class="mono text-[15px] font-bold">' + R.esc(bl.id + ' ' + bl.version) + '</div>' +
+          '<div class="text-[10.5px]" style="color:var(--text-tertiary)">' + bl.sampleRuns + ' runs · ' + R.esc(bl.band) + '</div></div>' +
+      '</div>' +
+      '<div class="mb-4">' + R.envelopeBand(c, bl) + '</div>' +
+      '<div class="flex items-center gap-2 mb-4">' +
+        (c.baselineConfirmed ? R.provenance(c.baselineConfirmed) : R.smartTag('Fitted')) + R.sref('S2') + '</div>' +
+      '<div data-depth-min="L2">' +
+        '<div class="stat-label mb-2">Is the comparison fair? ' + R.sref('S3') + '</div>' +
+        R.comparability(bl) +
+        '<div class="text-[11px] mt-2.5" style="color:var(--text-tertiary);line-height:1.55">' +
+          'Each factor is scored separately so a weakness is visible rather than averaged away. ' +
+          'A weak factor must be acknowledged before readiness can pass.</div>' +
+      '</div>' +
+      '<div class="mt-4 pt-4" style="border-top:1px solid var(--border-soft)">' + R.baselineAlternatives(bl) + '</div>' +
+    '</div>';
+
+  var evidenceBlocks = (c.evidence || []).map(function (b) {
+    return '<div class="ev-block">' +
+      '<div style="min-width:0">' +
+        '<div class="flex items-baseline gap-2.5 mb-2.5">' +
+          '<span class="mono text-[11px] font-bold" style="color:var(--accent)">' + R.esc(b.block) + '</span>' +
+          '<span class="text-[13.5px] font-semibold">' + R.esc(b.question) + '</span></div>' +
+        R.readingBlock(b, { method: true }) +
+      '</div>' +
+      '<div>' + R.chart(b.chart, c.id + b.block, { height: 118 }) +
+        '<div class="text-[10px] mt-1.5" style="color:var(--text-tertiary)">' + R.esc(b.chart.replace(/-/g, ' ')) +
+        ' · n=' + b.n + '</div></div>' +
+    '</div>';
+  }).join('');
+
+  var tabEvidence =
+    attrBlock + baselineBlock +
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="text-[13.5px] font-semibold">The evidence, as an argument</div>' +
+      '<div class="text-[11.5px] mt-1 mb-1" style="color:var(--text-secondary);line-height:1.6;max-width:72ch">' +
+        'Each block answers one question in sequence, and each chart arrives with its reading already written. ' +
+        'A reading can be replaced — the original is kept alongside the replacement.</div>' +
+      '<div class="mt-2 mb-1">' + R.sref('S5') + '</div>' +
+      (evidenceBlocks ||
+        '<div class="mt-4">' + R.cannotConclude('Evidence not yet assembled',
+          'The gap has been established against a baseline, but the supporting blocks have not been built.',
+          'The case owner assembles these before it can move to simulation.', 'S5') + '</div>') +
+    '</div>';
+
+  /* ======================================================= 3. SCENARIO */
+
+  var env = lever ? lever.envelope : null;
+
+  var tabOptions = !lever ?
+    (c.blocked
+      ? R.cannotConclude('No lever can be proposed',
+          c.blocked.reason,
+          'The case is held here rather than carrying an estimate that cannot be defended.', c.blocked.by)
+      : R.cannotConclude('Levers not yet identified',
+          'The cause has not been ruled on yet, so the available levers are not yet known.',
+          'Simulation opens once the attribution verdict is recorded.', 'S6')) :
+
+    '<div class="surface rounded-xl p-5 mb-5">' +
+      '<div class="flex items-start justify-between gap-6 mb-4">' +
+        '<div><div class="text-[13.5px] font-semibold">The lever</div>' +
+          '<div class="text-[15px] font-semibold mt-1">' + R.esc(lever.label) + '</div>' +
+          '<div class="text-[11.5px] mt-1.5" style="color:var(--text-secondary);line-height:1.6;max-width:62ch">' +
+            R.esc(lever.executionPath) + '</div></div>' +
+        '<div style="text-align:right;flex-shrink:0">' +
+          '<span class="action-class" style="background:var(--green-soft);color:var(--green)">' +
+            R.esc(String(lever.actionability).replace(/-/g, ' ')) + '</span>' +
+          '<div class="text-[10.5px] mt-2" style="color:var(--text-tertiary);max-width:20ch;line-height:1.45">' +
+            'Deliverable through an existing process — no new authority required.</div></div>' +
+      '</div>' +
+      (env ? '<div class="grid grid-cols-3 gap-4 pt-4" style="border-top:1px solid var(--border-soft)">' +
+        '<div><div class="stat-label">Binding constraint</div>' +
+          '<div class="text-[13px] font-semibold mt-1">' + R.esc(env.constraint) + '</div></div>' +
+        '<div><div class="stat-label">Floor</div>' +
+          '<div class="mono text-[13px] font-semibold mt-1">' + env.floor + ' ' + R.esc(env.unit) + ' must remain</div></div>' +
+        '<div><div class="stat-label">Headroom</div>' +
+          '<div class="mono text-[13px] font-semibold mt-1" style="color:var(--green)">' + env.headroom + ' ' + R.esc(env.unit) + ' available</div></div>' +
+      '</div>' : '') +
+    '</div>' +
+
+    '<div class="surface rounded-xl p-5 mb-5">' +
+      '<div class="flex items-start justify-between gap-6 mb-4">' +
+        '<div><div class="text-[13.5px] font-semibold">What could be done, and what each option costs</div>' +
+          '<div class="text-[11.5px] mt-1" style="color:var(--text-secondary);line-height:1.6;max-width:72ch">' +
+            'Bundles are generated across the full trade-off range and checked against the constraint envelope. ' +
+            'The suggested bundle is a starting point, not a decision — selecting another requires no justification.</div></div>' +
+        '<span style="flex-shrink:0">' + R.sref('S9') + '</span>' +
+      '</div>' +
+      R.scenarioCards(c) +
+      '<div class="mt-5 pt-4" style="border-top:1px solid var(--border-soft)">' + R.budgetMeter(c) + '</div>' +
+    '</div>' +
+
+    '<div class="grid grid-cols-2 gap-4">' +
+      '<div class="surface rounded-xl p-5">' +
+        '<div class="text-[13.5px] font-semibold mb-1">Has this worked before?</div>' +
+        '<div class="text-[11.5px] mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+          'Closed cases using a comparable lever, showing what was modelled against what was ' +
+          'actually measured after implementation.</div>' +
+        R.precedentCard(c) +
+      '</div>' +
+      '<div class="surface rounded-xl p-5">' +
+        '<div class="text-[13.5px] font-semibold mb-1">What the simulation assumes</div>' +
+        '<div class="text-[11.5px] mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+          'The model used, its calibration state, and where it stops being applicable.</div>' +
+        Object.keys(H.MODELS).slice(0, 2).map(function (k) {
+          var m = H.MODELS[k];
+          return '<div class="py-3" style="border-top:1px solid var(--border-soft)">' +
+            '<div class="flex items-center gap-2">' +
+              '<span class="mono text-[11.5px] font-bold">' + R.esc(m.id) + ' v' + R.esc(m.version) + '</span>' +
+              '<span class="text-[12px]" style="color:var(--text-secondary)">' + R.esc(m.name) + '</span>' +
+              '<span class="action-class ml-auto" style="background:var(--green-soft);color:var(--green)">' + R.esc(m.calibration) + '</span></div>' +
+            '<div class="text-[11px] mt-1.5" style="color:var(--text-tertiary);line-height:1.5" data-depth-min="L3">' +
+              R.esc(m.validation) + '</div>' +
+            (m.outside && m.outside.length ? '<div class="text-[11px] mt-1.5" style="color:var(--amber);line-height:1.5">' +
+              'Outside envelope: ' + R.esc(m.outside.join('; ')) + '</div>' : '') +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+
+  /* ======================================================= 4. DECISION */
+
+  var dp = c.decisionPending;
+  var approverRole = C.approverRole(c);
+  var isApprover = approverRole === me;
+
+  var tabDecision = c.decision ?
+    '<div class="surface rounded-xl p-5">' +
+      '<div class="stat-label mb-2">Decision on record</div>' +
+      '<div class="text-[19px] font-semibold" style="text-transform:capitalize">' + R.esc(c.decision.verdict) + '</div>' +
+      '<div class="text-[12px] mt-1" style="color:var(--text-secondary)">' +
+        R.esc(c.decision.by) + ' · ' + R.esc(H.ROLES[c.decision.role].short) + ' · ' +
+        R.esc(String(c.decision.at).slice(0, 10)) + '</div>' +
+      '<div class="text-[13px] mt-4 pt-4" style="border-top:1px solid var(--border-soft);line-height:1.65">' +
+        R.esc(c.decision.rationale) + '</div>' +
+    '</div>' :
+
+    dp ?
+    '<div class="grid grid-cols-3 gap-5">' +
+      '<div style="grid-column:span 2;min-width:0">' +
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="stat-label mb-2.5">The decision</div>' +
+          '<div class="text-[15px]" style="line-height:1.7">' + R.esc(dp.asks) + '</div>' +
+          '<div class="mt-5">' + R.budgetMeter(c) + '</div>' +
+        '</div>' +
+
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="flex items-center gap-2 mb-2">' +
+            '<div class="text-[13.5px] font-semibold">Suggested route</div>' +
+            '<span class="path-chip">' + R.esc(dp.recommendedPath.v) + '</span>' +
+            '<span class="ml-auto">' + R.provenance(dp.recommendedPath) + '</span></div>' +
+          '<div class="text-[12.5px]" style="color:var(--text-secondary);line-height:1.65">' +
+            R.esc(dp.recommendedPathWhy) + '</div>' +
+          '<div class="text-[11px] mt-3 pt-3" style="border-top:1px solid var(--border-soft);color:var(--text-tertiary);line-height:1.55">' +
+            'Approving in full and trialling first are both available. The route changes the measurement ' +
+            'window, not the lever.</div>' +
+        '</div>' +
+
+        (isApprover ?
+        '<div class="surface rounded-xl p-5">' +
+          '<div class="text-[13.5px] font-semibold mb-3">Record your decision</div>' +
+          '<div class="flex items-center gap-2.5">' +
+            '<button class="btn-primary" id="btnApproveTrial">Approve as a trial</button>' +
+            '<button class="btn-ghost" id="btnApproveFull">Approve in full</button>' +
+            '<button class="btn-ghost" id="btnMore">Ask for more evidence</button>' +
+            '<button class="btn-danger ml-auto" id="btnDecline">Decline</button>' +
+          '</div>' +
+          '<div class="text-[11px] mt-3" style="color:var(--text-tertiary);line-height:1.55">' +
+            'A decision closes the gate and locks the measurement plan. Declining returns the case with ' +
+            'your reason attached and keeps it in the ledger as a rejected opportunity.</div>' +
+        '</div>' :
+        '<div class="surface rounded-xl p-5">' +
+          '<div class="text-[13px]" style="color:var(--text-secondary);line-height:1.65">' +
+            'This decision belongs to <b style="color:var(--text-primary)">' + R.esc(R.personOf(approverRole)) + '</b>, ' +
+            R.esc(H.ROLES[approverRole].name) + ', because the change spends ' +
+            R.esc(String(cur.label).toLowerCase()) + '. You can see everything they see, but the ' +
+            'controls are not yours.</div>' +
+          '<div class="mt-3">' + R.sref('S8') + '</div>' +
+        '</div>') +
+      '</div>' +
+
+      '<div>' +
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="stat-label mb-3">Routed to</div>' +
+          '<div class="flex items-center gap-2.5 mb-3">' +
+            '<span class="hc-avatar to">' + R.esc(H.ROLES[approverRole].initials) + '</span>' +
+            '<div><div class="text-[13px] font-semibold">' + R.esc(R.personOf(approverRole)) + '</div>' +
+            '<div class="text-[11px]" style="color:var(--text-tertiary)">' + R.esc(H.ROLES[approverRole].name) + '</div></div>' +
+          '</div>' +
+          '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+            'Routing follows the currency the change spends — ' + R.esc(String(cur.label).toLowerCase()) +
+            ' — not the seniority of the requester.</div>' +
+          '<div class="mt-3 flex items-center gap-2">' + R.provenance(dp.approver, { label: 'Routed' }) + '</div>' +
+        '</div>' +
+
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="stat-label mb-2.5">Before you decide</div>' +
+          R.readinessMeter(c) +
+          '<div class="text-[11.5px] mt-2.5" style="color:var(--text-secondary);line-height:1.6">' +
+            'All ' + C.readinessTotal(c) + ' readiness questions are answered. ' +
+            'This case would not have reached you otherwise.</div>' +
+        '</div>' +
+
+        '<div class="surface rounded-xl p-5">' + R.planCard(c) + '</div>' +
+      '</div>' +
+    '</div>' :
+
+    '<div class="surface rounded-xl p-8" style="text-align:center">' +
+      '<div class="text-[14px] font-semibold mb-1.5">Not yet ready for a decision</div>' +
+      '<div class="text-[12.5px]" style="color:var(--text-secondary);max-width:52ch;margin:0 auto;line-height:1.6">' +
+        'Readiness is at ' + C.readinessMet(c) + ' of ' + C.readinessTotal(c) +
+        '. A decision-maker is not asked to rule until the evidence is complete.</div></div>';
+
+  /* ======================================================= 5. RESULT */
+
+  var o = c.outcome;
+  var tabVerification = o ?
+    '<div class="grid grid-cols-3 gap-5">' +
+      '<div style="grid-column:span 2;min-width:0">' +
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="flex items-center justify-between mb-3">' +
+            '<div class="text-[13.5px] font-semibold">Did it work?</div>' +
+            '<span class="action-class" style="background:var(--green-soft);color:var(--green)">' + R.esc(o.verdict) + '</span></div>' +
+          R.realisationBar(c) +
+          '<div class="text-[12.5px] mt-4" style="line-height:1.65">' + R.esc(o.reasoning) + '</div>' +
+          '<div class="text-[11px] mt-3 pt-3" style="border-top:1px solid var(--border-soft);color:var(--text-tertiary)">' +
+            'Confirmed by ' + R.esc(o.by) + ' on ' + R.esc(String(o.at).slice(0, 10)) +
+            ' · folded into portfolio totals ' + R.sref('S11') + '</div>' +
+        '</div>' +
+        '<div class="surface rounded-xl p-5">' +
+          '<div class="text-[13.5px] font-semibold mb-1">What could have explained it instead</div>' +
+          '<div class="text-[11.5px] mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+            'Confounders are declared before implementation, not selected afterwards. Each was watched ' +
+            'across the measurement window and assessed on the record.</div>' +
+          R.confounderRows(c) +
+          '<div class="mt-3">' + R.sref('S10') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div>' + '<div class="surface rounded-xl p-5">' + R.planCard(c) + '</div>' + '</div>' +
+    '</div>' :
+
+    '<div class="grid grid-cols-3 gap-5">' +
+      '<div style="grid-column:span 2">' +
+        '<div class="surface rounded-xl p-5 mb-4">' +
+          '<div class="text-[13.5px] font-semibold mb-1">How this will be measured</div>' +
+          '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6;max-width:72ch">' +
+            'The measurement method is fixed before implementation begins, so the result cannot be ' +
+            'chosen after the fact. The plan locks at release.</div>' +
+          (c.plan ? R.planCard(c)
+            : R.cannotConclude('Measurement plan not yet drafted',
+                'A plan is drafted once a bundle has been selected, so that the method is fixed before anyone knows the answer.',
+                'This is a readiness requirement and the case cannot reach a decision without it.', 'S10')) +
+        '</div>' +
+        (c.plan ?
+        '<div class="surface rounded-xl p-5">' +
+          '<div class="text-[13.5px] font-semibold mb-1">What will be watched</div>' +
+          '<div class="text-[11.5px] mb-3" style="color:var(--text-secondary);line-height:1.6">' +
+            'Declared in advance. If any of these occurs during the window the result is continued, ' +
+            'extended or graded down — never quietly claimed.</div>' +
+          R.confounderRows(c) +
+          '<div class="mt-3">' + R.sref('S10') + '</div>' +
+        '</div>' : '') +
+      '</div>' +
+      '<div class="surface rounded-xl p-5" style="align-self:start">' +
+        '<div class="stat-label mb-2.5">Expected realisation</div>' +
+        '<div class="mono text-[24px] font-bold">' + (c.metrics.annualMWh || '—') + '</div>' +
+        '<div class="text-[11px]" style="color:var(--text-tertiary)">MWh/yr modelled</div>' +
+        '<div class="text-[11.5px] mt-3 pt-3" style="border-top:1px solid var(--border-soft);color:var(--text-secondary);line-height:1.6">' +
+          'Comparable levers have historically realised about ' +
+          (function () {
+            var p = Q.precedentFor(c);
+            if (!p.length) return 'an unknown proportion';
+            return Math.round(p.reduce(function (a, x) { return a + x.realisation; }, 0) / p.length) + '%';
+          })() +
+          ' of the modelled figure. Nothing is counted as a saving until the window closes.</div>' +
+      '</div>' +
+    '</div>';
+
+  /* ======================================================= assemble */
+
+  var panels =
+    '<div class="tabpanel" id="tab-overview">' + tabOverview + '</div>' +
+    '<div class="tabpanel" id="tab-evidence">' + tabEvidence + '</div>' +
+    '<div class="tabpanel" id="tab-options">' + tabOptions + '</div>' +
+    '<div class="tabpanel" id="tab-decision">' + tabDecision + '</div>' +
+    '<div class="tabpanel" id="tab-verification">' + tabVerification + '</div>';
+
+  /* ================================================ measurement context
+     A case must not be a dead end. This links the managed work back to the
+     measurements it was raised from, in the workspaces that own them. */
+
+  var ctx = N.contextFor(c.scope);
+  var ctxLinks = [];
+  if (ctx && ctx.hop) {
+    ctxLinks.push({
+      label: ctx.hop.label,
+      sub: 'Interstation \u00b7 ' + ctx.hop.kwhPerKm.toFixed(2) + ' against ' + ctx.hop.baseline.toFixed(2) +
+           ' kWh/km over ' + ctx.hop.runs + ' runs',
+      href: 'explore.html?line=' + ctx.hop.lineId + '&dir=' + encodeURIComponent(ctx.hop.direction) +
+            '&view=location&hop=' + ctx.hop.id,
+      where: 'Analysis'
+    });
+  }
+  if (ctx && ctx.runs.length) {
+    ctxLinks.push({
+      label: ctx.runs.length + ' runs in scope',
+      sub: 'Individual services matching this line, direction and band',
+      href: 'runs.html?line=' + ctx.lineId +
+            (c.scope.direction ? '&dir=' + encodeURIComponent(c.scope.direction) : ''),
+      where: 'Runs'
+    });
+  }
+  if (c.scope.fleet) {
+    ctxLinks.push({
+      label: c.scope.fleet,
+      sub: ctx && ctx.units.length
+        ? ctx.units.map(function (u) { return u.id; }).join(', ') + ' named in scope'
+        : 'Fleet performance and unit-level divergence',
+      href: 'fleet.html?fleet=' + encodeURIComponent(c.scope.fleet) +
+            (ctx && ctx.units.length ? '&unit=' + encodeURIComponent(ctx.units[0].id) : ''),
+      where: 'Fleet'
+    });
+  }
+
+  var contextBar = ctxLinks.length
+    ? '<div class="ctx-bar mb-5">' +
+        '<div class="ctx-label">Measured in</div>' +
+        ctxLinks.map(function (l) {
+          return '<a class="ctx-item" href="' + R.esc(l.href) + '">' +
+            '<span class="ctx-where">' + R.esc(l.where) + '</span>' +
+            '<span class="ctx-name">' + R.esc(l.label) + '</span>' +
+            '<span class="ctx-sub">' + R.esc(l.sub) + '</span>' +
+          '</a>';
+        }).join('') +
+      '</div>'
+    : '';
+
+  document.getElementById('main').innerHTML =
+    header +
+    contextBar +
+    '<div class="mb-5">' + R.stepper(c) + '</div>' +
+    '<div class="mb-5">' + R.gateBanner(c, me, {
+      showId: false,
+      actions: '<button class="btn-primary" id="gbGo">Open the decision</button>'
+    }) + '</div>' +
+    rail + panels;
+
+  /* ---------------------------------------------------------- tabs */
+
+  function show(tabId) {
+    var panelsEl = document.getElementsByClassName('tabpanel');
+    for (var i = 0; i < panelsEl.length; i++) {
+      panelsEl[i].className = 'tabpanel' + (panelsEl[i].id === tabId ? ' active' : '');
+    }
+    var items = document.getElementsByClassName('tab-item');
+    for (var j = 0; j < items.length; j++) {
+      var t = TABS[j], on = items[j].getAttribute('data-tab') === tabId;
+      var done = stageIdx > t.stage, locked = stageIdx < t.stage && !(t.stage === 4 && stageIdx >= 4);
+      items[j].className = 'tab-item' + (on ? ' active' : done ? ' done' : locked ? ' locked' : '');
+    }
+  }
+
+  var rails = document.getElementsByClassName('tab-item');
+  for (var i = 0; i < rails.length; i++) {
+    (function (el) {
+      el.addEventListener('click', function () {
+        if (String(el.className).indexOf('locked') > -1) return;
+        show(el.getAttribute('data-tab'));
+      });
+    })(rails[i]);
+  }
+
+  var startTab = location.hash === '#decision' ? 'tab-decision'
+    : TABS[Math.min(stageIdx, TABS.length - 1)].id;
+  show(startTab);
+
+  var gb = document.getElementById('gbGo');
+  if (gb) gb.addEventListener('click', function () { show('tab-decision'); });
+
+  /* ------------------------------------------------- decision actions */
+
+  function decide(title, body, confirmLabel, tone) {
+    var scrim = document.createElement('div');
+    scrim.className = 'slide-over-scrim open';
+    scrim.innerHTML =
+      '<div class="decision-modal" onclick="event.stopPropagation()">' +
+        '<div class="dm-head"><div class="dm-title">' + R.esc(title) + '</div>' +
+          '<div class="dm-sub">' + R.esc(c.id) + ' · ' + R.esc(c.title) + '</div></div>' +
+        '<div class="dm-body">' + body + '</div>' +
+        '<div class="dm-foot">' +
+          '<button class="btn-ghost" data-close="1">Cancel</button>' +
+          '<button class="' + (tone === 'danger' ? 'btn-danger' : 'btn-primary') + '" data-close="1">' +
+            R.esc(confirmLabel) + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(scrim);
+    scrim.addEventListener('click', function (e) {
+      if (e.target === scrim || e.target.getAttribute('data-close')) document.body.removeChild(scrim);
+    });
+  }
+
+  function bind(elId, fn) { var el = document.getElementById(elId); if (el) el.addEventListener('click', fn); }
+
+  bind('btnApproveTrial', function () {
+    decide('Approve as a trial',
+      '<div class="text-[12.5px]" style="line-height:1.7;color:var(--text-secondary)">' +
+        'Releases the change on <b style="color:var(--text-primary)">' + R.esc(R.whereOf(c)) + '</b> for an ' +
+        '<b style="color:var(--text-primary)">' + R.esc(c.plan.window) + '</b> measurement window.</div>' +
+      '<div class="mt-4">' + R.budgetMeter(c) + '</div>' +
+      '<div class="mt-4 pt-4" style="border-top:1px solid var(--border-soft)">' +
+        '<div class="stat-label mb-2">This locks the measurement plan</div>' +
+        '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+          R.esc(c.plan.basis) + ' · threshold ' + R.esc(c.plan.threshold) + '. ' +
+          'Confounders are watched automatically and any occurrence is recorded against the result.</div></div>',
+      'Approve and release');
+  });
+
+  bind('btnApproveFull', function () {
+    decide('Approve in full',
+      '<div class="text-[12.5px]" style="line-height:1.7;color:var(--text-secondary)">' +
+        'Applies the change permanently without a trial window. Measurement still runs, but the ' +
+        'change is not reverted automatically if the result falls short.</div>' +
+      '<div class="mt-4">' + R.cannotConclude('Precedent suggests trialling first',
+        'Comparable cases at medium confidence converted better when trialled first — 3 of 3 precedents did.',
+        'Approving in full is available and requires no justification.', 'S7') + '</div>',
+      'Approve in full');
+  });
+
+  bind('btnMore', function () {
+    decide('Ask for more evidence',
+      '<div class="text-[12.5px]" style="line-height:1.7;color:var(--text-secondary)">' +
+        'Returns the case to <b style="color:var(--text-primary)">' + R.esc(c.assigneeName) + '</b> ' +
+        'with your question attached. The gate stays open and the case keeps its position in the queue.</div>' +
+      '<div class="mt-4 surface-2 rounded-lg p-3">' +
+        '<div class="stat-label mb-1.5">Most common at this gate</div>' +
+        '<div class="text-[11.5px]" style="color:var(--text-secondary);line-height:1.6">' +
+          'Load-band spread is the stated confidence limit. A narrower sample would raise the tier ' +
+          'but reduce the run count below the conclusiveness threshold.</div></div>',
+      'Send back with a question');
+  });
+
+  bind('btnDecline', function () {
+    decide('Decline this case',
+      '<div class="text-[12.5px]" style="line-height:1.7;color:var(--text-secondary)">' +
+        'The case closes as a rejected opportunity. It stays in the ledger and continues to count ' +
+        'against conversion for its currency, so declined trade-offs remain visible as a pattern ' +
+        'rather than disappearing.</div>',
+      'Decline and close', 'danger');
+  });
+})();
+</script>
+</body>
+</html>

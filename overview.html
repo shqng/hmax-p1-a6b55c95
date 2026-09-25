@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Energy overview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute, N = H.net, X = H.charts;
+  var esc = R.esc;
+
+  var ctx = H.shell.mount({ workspace: 'overview', crumb: 'Monitor', title: 'Energy overview' });
+  if (!ctx) return;
+
+  var state = { period: 'p12w' };
+
+  var T = N.TOTAL;
+  var gapPct = (T.kwhPerKm - T.baseline) / T.baseline * 100;
+  var excessMwh = Math.round(T.mwh * (gapPct / 100) / (1 + gapPct / 100));
+  var excessCost = excessMwh * T.costPerMwh;
+
+  var linesRanked = N.LINES.slice().sort(function (a, b) {
+    return (b.kwhPerKm - b.baseline) * b.mwh - (a.kwhPerKm - a.baseline) * a.mwh;
+  });
+  var worstLine = linesRanked[0];
+  var worstShare = Math.round(
+    (worstLine.kwhPerKm - worstLine.baseline) * worstLine.mwh /
+    N.LINES.reduce(function (a, l) { return a + Math.max(0, (l.kwhPerKm - l.baseline) * l.mwh); }, 0) * 100);
+
+  var lineColour = { L1: 'var(--blue)', L2: 'var(--purple)', L3: 'var(--amber)', L4: 'var(--green)' };
+
+  /* ------------------------------------------------------------ helpers */
+
+  function periodBar() {
+    return '<div class="filterbar mb-6">' +
+      '<div class="filter-group"><span class="filter-label">Period</span>' +
+        '<span class="seg" id="periodSeg">' + N.PERIODS.map(function (p) {
+          return '<button data-p="' + p.id + '"' + (p.id === state.period ? ' class="on"' : '') + '>' +
+            esc(p.label) + '</button>';
+        }).join('') + '</span></div>' +
+      '<div class="filter-group"><span class="filter-label">Scope</span>' +
+        '<span class="text-[11.5px]" style="color:var(--text-secondary)">Whole network · all fleets · all services</span></div>' +
+      '<div class="filter-reset mono text-[10.5px]">' +
+        'to ' + esc(N.PERIODS.filter(function (p) { return p.id === state.period; })[0].to) + '</div>' +
+    '</div>';
+  }
+
+  function reading(text, service) { return X.note(text, service); }
+
+  function em(s) { return X.em(s); }
+
+  /* ------------------------------------------------------------ headline */
+
+  var headline =
+    '<div class="metric-strip grid grid-cols-5 mb-6">' +
+      '<div class="metric">' +
+        '<div class="metric-label">Network intensity</div>' +
+        '<div class="metric-value">' + T.kwhPerKm.toFixed(2) + '<span class="metric-unit">kWh/km</span></div>' +
+        X.gauge(T.kwhPerKm, T.baseline) +
+        '<div class="metric-sub">' + X.delta(T.kwhPerKm, T.baseline) +
+          ' against baseline ' + T.baseline.toFixed(2) + '</div>' +
+      '</div>' +
+      '<div class="metric">' +
+        '<div class="metric-label">Energy consumed</div>' +
+        '<div class="metric-value">' + X.fmtInt(T.mwh) + '<span class="metric-unit">MWh</span></div>' +
+        '<div class="metric-sub">Over ' + X.fmtInt(T.km / 1000) + ' thousand train-km, ' +
+          X.fmtInt(T.runs) + ' runs</div>' +
+      '</div>' +
+      '<div class="metric">' +
+        '<div class="metric-label">Regenerated</div>' +
+        '<div class="metric-value">' + X.fmtInt(T.mwhRecovered) + '<span class="metric-unit">MWh</span></div>' +
+        '<div class="metric-sub">' + T.regenPct.toFixed(1) + '% recovery, net of substation acceptance</div>' +
+      '</div>' +
+      '<div class="metric">' +
+        '<div class="metric-label">Excess against baseline</div>' +
+        '<div class="metric-value" style="color:var(--amber)">' + X.fmtInt(excessMwh) +
+          '<span class="metric-unit">MWh</span></div>' +
+        '<div class="metric-sub">Approximately ' + R.money(excessCost) + ' at ' +
+          T.currency + T.costPerMwh + '/MWh</div>' +
+      '</div>' +
+      '<div class="metric">' +
+        '<div class="metric-label">Under management</div>' +
+        '<div class="metric-value">' + Q.openCases().length + '<span class="metric-unit">open cases</span></div>' +
+        '<div class="metric-sub">' + N.deviationsFor({ state: 'candidate' }).length +
+          ' deviations above the promotion threshold</div>' +
+      '</div>' +
+    '</div>';
+
+  /* -------------------------------------------------------------- trend */
+
+  var risingLines = N.LINES.filter(function (l) { return l.drift === 'rising'; });
+  var trendPanel =
+    '<div class="panel mb-6">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Network intensity against baseline</div>' +
+        '<div class="panel-sub">Weighted across all lines. Each line is compared against its own matched-run baseline.</div></div>' +
+        '<div class="panel-actions">' + R.sref('S2') + '</div>' +
+      '</div>' +
+      '<div class="panel-body">' +
+        X.series(T.trend, { height: 200, dp: 2 }) +
+        '<div class="chart-legend">' +
+          '<span class="cl-item"><span class="cl-swatch" style="background:var(--accent)"></span>Measured intensity</span>' +
+          '<span class="cl-item"><span class="cl-swatch dash"></span>Matched-run baseline</span>' +
+          '<span class="cl-item"><span class="cl-swatch area" style="background:rgba(245,185,92,.13)"></span>Excess</span>' +
+        '</div>' +
+        reading(
+          'Network intensity is ' + em(Math.abs(gapPct).toFixed(1) + '% above baseline') + ' and has widened over ' +
+          'the last four weeks. ' + em(worstLine.id.replace('L', 'Line ')) + ' contributes ' + em(worstShare + '%') +
+          ' of the total gap despite carrying ' + Math.round(worstLine.mwh / T.mwh * 100) + '% of the energy. ' +
+          risingLines.length + ' of ' + N.LINES.length + ' lines show a sustained rising trend; the remainder are ' +
+          'flat within their comparison band.', 'S5') +
+      '</div>' +
+    '</div>';
+
+  /* ------------------------------------------------------- lines + split */
+
+  var lineItems = linesRanked.map(function (l) {
+    var ln = R.lineOf(l.id);
+    return {
+      label: (ln && ln.name) || l.id,
+      sub: l.km + ' km · ' + l.stations + ' stations · ' + l.fleets.join(', '),
+      value: l.kwhPerKm, baseline: l.baseline,
+      flag: l.openCases ? l.openCases + ' open case' + (l.openCases > 1 ? 's' : '') : 'no open cases',
+      href: 'explore.html?line=' + l.id,
+      tone: l.kwhPerKm > l.baseline * 1.03 ? 'warn' : 'key'
+    };
+  });
+
+  var linePanel =
+    '<div class="panel">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Intensity by line</div>' +
+        '<div class="panel-sub">Each line against its own baseline. Lines are not compared to one another.</div></div>' +
+      '</div>' +
+      '<div class="panel-body">' + X.rankedBars(lineItems, { dp: 2 }) + '</div>' +
+      '<div class="panel-foot">Select a line to open it in Analysis.</div>' +
+    '</div>';
+
+  var splitPanel =
+    '<div class="panel">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Where the energy goes</div>' +
+        '<div class="panel-sub">Traction is the addressable component in Phase 1. Auxiliary load is shown for completeness.</div></div>' +
+      '</div>' +
+      '<div class="panel-body">' + X.stack(N.ENERGY_SPLIT, { unit: 'MWh' }) +
+        reading('Traction is ' +
+          em(Math.round(N.ENERGY_SPLIT[0].mwh / (N.ENERGY_SPLIT[0].mwh + N.ENERGY_SPLIT[1].mwh + N.ENERGY_SPLIT[2].mwh) * 100) + '%') +
+          ' of consumption and is the only component this phase can act on. Regeneration currently returns ' +
+          em(T.regenPct.toFixed(1) + '%') + ', which is below the design figure for two of three fleets.', 'S5') +
+      '</div>' +
+    '</div>';
+
+  /* ------------------------------------------------------- time of day */
+
+  var hourItems = N.HOURLY.map(function (h) {
+    return {
+      label: h.hour % 3 === 0 ? h.label.slice(0, 2) : '',
+      value: h.kwhPerKm, baseline: h.baseline,
+      tone: h.band === 'Peak' ? 'warn' : h.band === 'Late' ? 'tertiary' : 'key'
+    };
+  });
+  var peakAvg = 0, offAvg = 0, pn = 0, on = 0;
+  N.HOURLY.forEach(function (h) {
+    if (h.band === 'Peak') { peakAvg += h.kwhPerKm; pn++; } else if (h.band === 'Off-peak') { offAvg += h.kwhPerKm; on++; }
+  });
+  peakAvg /= pn; offAvg /= on;
+
+  var hourPanel =
+    '<div class="panel mb-6">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Intensity by hour of day</div>' +
+        '<div class="panel-sub">Separates whole-day conditions from peak-only ones.</div></div>' +
+      '</div>' +
+      '<div class="panel-body">' +
+        X.columns(hourItems, { height: 180, zero: false, dp: 2 }) +
+        '<div class="chart-legend">' +
+          '<span class="cl-item"><span class="cl-swatch area" style="background:var(--amber)"></span>Peak</span>' +
+          '<span class="cl-item"><span class="cl-swatch area" style="background:var(--accent)"></span>Off-peak</span>' +
+          '<span class="cl-item"><span class="cl-swatch dash"></span>Baseline for the hour</span>' +
+        '</div>' +
+        reading('Peak hours run ' + em(((peakAvg - offAvg) / offAvg * 100).toFixed(1) + '% higher') +
+          ' than off-peak, which is expected from loading and headway. The off-peak band is nonetheless ' +
+          em('above its own baseline') + ' — a condition that loading does not explain and that is therefore ' +
+          'the more promising place to look.', 'S5') +
+      '</div>' +
+    '</div>';
+
+  /* ------------------------------------------------------ deviation feed */
+
+  var devs = N.DEVIATIONS.slice().sort(function (a, b) { return b.annualMWh - a.annualMWh; });
+  var stateLabel = { 'case': 'Case open', 'candidate': 'Awaiting triage', 'held': 'Held' };
+
+  var feed =
+    '<div class="panel mb-6">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Deviations currently detected</div>' +
+        '<div class="panel-sub">' + X.fmtInt(H.HELD_SIGNALS.scanned24h) + ' signals scanned in the last 24 hours. Only deviations that persist, clear the sample threshold and hold a qualifying baseline are listed.</div></div>' +
+        '<div class="panel-actions">' + R.sref('S1') + '</div>' +
+      '</div>' +
+      '<div class="panel-body flush">' +
+        '<table class="dt"><thead><tr>' +
+          '<th>Deviation</th><th>Location and scope</th><th class="num">Measured</th>' +
+          '<th class="num">Baseline</th><th class="num">Gap</th><th class="num">Runs</th>' +
+          '<th>Persistence</th><th>Status</th>' +
+        '</tr></thead><tbody>' +
+        devs.map(function (d) {
+          return '<tr class="' + (d.state === 'case' ? 'is-cased' : d.state === 'candidate' ? 'is-flagged' : '') + '">' +
+            '<td class="mono" style="color:var(--text-tertiary)">' + esc(d.id) + '</td>' +
+            '<td class="key">' + esc(d.scope) + '</td>' +
+            '<td class="num mono">' + d.kwhPerKm.toFixed(2) + '</td>' +
+            '<td class="num mono muted">' + d.baseline.toFixed(2) + '</td>' +
+            '<td class="num">' + X.delta(d.kwhPerKm, d.baseline) + '</td>' +
+            '<td class="num mono">' + d.runs + '</td>' +
+            '<td>' + esc(d.persistence) + ' · ' + d.weeks + 'w</td>' +
+            '<td>' + (d.caseId
+              ? '<a class="case-link" href="case.html?id=' + esc(d.caseId) + '">' + esc(d.caseId) + '</a>'
+              : d.state === 'candidate'
+                ? '<button class="raise-link" data-raise="' + esc(d.id) + '">Raise a case</button>'
+                : '<span class="text-[11px]" style="color:var(--text-tertiary)">' +
+                    esc(stateLabel[d.state]) + '</span>') +
+            '</td></tr>';
+        }).join('') +
+        '</tbody></table>' +
+      '</div>' +
+      '<div class="raise-bar">' +
+        '<div class="raise-what">' +
+          N.deviationsFor({ state: 'candidate' }).length + ' deviations meet the promotion threshold but have ' +
+          'no owner. ' + N.deviationsFor({ state: 'held' }).length + ' are held below it — too recent or too few runs to ' +
+          'distinguish from normal variation.</div>' +
+        '<a class="btn-primary" style="margin-left:auto" href="portfolio.html#candidates">Triage candidates</a>' +
+      '</div>' +
+    '</div>';
+
+  /* ----------------------------------------------------------- assemble */
+
+  document.getElementById('main').innerHTML =
+    '<p class="lede mb-6">Network traction energy against baseline, and the deviations currently under management.</p>' +
+            '' +
+    periodBar() +
+    headline +
+    trendPanel +
+    '<div class="grid grid-cols-2 gap-5 mb-6">' + linePanel + splitPanel + '</div>' +
+    hourPanel +
+    feed;
+
+  /* Period control. The data set is fixed in the prototype, so changing the
+     period re-frames the header rather than pretending to refetch. */
+  var seg = document.getElementById('periodSeg');
+  if (seg) {
+    var bs = seg.getElementsByTagName('button');
+    for (var i = 0; i < bs.length; i++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          for (var j = 0; j < bs.length; j++) bs[j].className = '';
+          b.className = 'on';
+        });
+      })(bs[i]);
+    }
+  }
+  /* Promotion bridge. A deviation with no owner can be raised into a managed
+     case directly from the feed, carrying its baseline and scope with it. */
+  var raisers = document.querySelectorAll('[data-raise]');
+  for (var r = 0; r < raisers.length; r++) {
+    (function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-raise'), d = null;
+        for (var j = 0; j < N.DEVIATIONS.length; j++) {
+          if (N.DEVIATIONS[j].id === id) d = N.DEVIATIONS[j];
+        }
+        if (d) H.raise.open(d);
+      });
+    })(raisers[r]);
+  }
+})();
+</script>
+</body>
+</html>

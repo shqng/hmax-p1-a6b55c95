@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX Energy Management — prototype guide</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+<style>
+  body{ padding:48px 24px 90px; }
+  .wrap{ max-width:760px; margin:0 auto; }
+  h1{ font-size:27px; font-weight:700; color:var(--text-primary); letter-spacing:-.015em; }
+  .sub{ font-size:14px; color:var(--text-secondary); margin-top:9px; line-height:1.62; }
+  h2{ font-size:15px; font-weight:700; color:var(--text-primary); margin:40px 0 13px;
+      padding-bottom:9px; border-bottom:1px solid var(--border-soft); }
+  p{ font-size:13.5px; color:var(--text-secondary); line-height:1.68; margin:11px 0; }
+  .start{ background:var(--bg-elev-1); border:1px solid var(--border-soft);
+          border-left:3px solid var(--accent); border-radius:12px; padding:20px 22px; margin:22px 0; }
+  .start b{ color:var(--text-primary); font-size:14px; }
+  code{ font-family:'IBM Plex Mono',monospace; font-size:12px; background:var(--bg-elev-3);
+        border:1px solid var(--border-soft); border-radius:5px; padding:1.5px 6px; color:var(--text-primary); }
+  table{ width:100%; border-collapse:collapse; margin:16px 0; }
+  th{ text-align:left; font-size:10.5px; font-weight:700; text-transform:uppercase;
+      letter-spacing:.06em; color:var(--text-tertiary); padding:0 12px 8px 0;
+      border-bottom:1px solid var(--border); }
+  td{ font-size:13px; color:var(--text-secondary); padding:11px 12px 11px 0;
+      border-bottom:1px solid var(--border-soft); vertical-align:top; line-height:1.55; }
+  td b{ color:var(--text-primary); font-weight:600; }
+  ol{ margin:12px 0 12px 20px; }
+  li{ font-size:13.5px; color:var(--text-secondary); line-height:1.7; margin:7px 0; }
+  li b{ color:var(--text-primary); font-weight:600; }
+  .note{ background:var(--bg-elev-2); border:1px solid var(--border-soft);
+         border-radius:10px; padding:16px 18px; margin:18px 0; }
+  .note p{ margin:0; font-size:12.5px; }
+  .note p + p{ margin-top:9px; }
+  .foot{ margin-top:44px; padding-top:18px; border-top:1px solid var(--border-soft);
+         font-size:11.5px; color:var(--text-tertiary); line-height:1.6; }
+  .cta{ display:inline-block; margin-top:14px; background:var(--accent); color:#fff;
+        font-size:13px; font-weight:600; padding:10px 20px; border-radius:8px; text-decoration:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>HMAX Energy Management</h1>
+  <p class="sub">
+    Phase 1 concept prototype — traction energy. This is a design prototype built to test
+    structure, workflow and role interaction. It is not production software, and the data in it
+    is representative rather than real.
+  </p>
+
+  <div class="start">
+    <b>To open it</b>
+    <p style="margin-top:8px">
+      Double-click <code>Start HMAX prototype.bat</code>. It opens in your default browser.
+      Leave the small black window open while you are using it, and close it when you are done.
+    </p>
+    <p>
+      If that does not work, open <code>index.html</code> directly in Chrome or Edge.
+      Everything runs locally — nothing is sent anywhere, and no installation is required.
+    </p>
+    <a class="cta" href="index.html">Open the prototype</a>
+  </div>
+
+  <h2>Start here</h2>
+  <p>
+    The first screen asks who you are. That choice is the point of the prototype — the product
+    shows a different depth, a different home screen and a different set of actions depending on
+    the role, because each role is accountable for something different.
+  </p>
+
+  <table>
+    <tr><th style="width:34%">Role</th><th>What they do, and where they land</th></tr>
+    <tr>
+      <td><b>Energy Performance Manager</b></td>
+      <td>Owns performance and prioritisation. Decides what gets investigated and confirms
+          whether a saving held up. Opens on the highest-level view in the product.</td>
+    </tr>
+    <tr>
+      <td><b>Energy Performance Analyst</b></td>
+      <td>Builds and evidences the case. The heaviest daily user, and the role most of the
+          design effort went into.</td>
+    </tr>
+    <tr>
+      <td><b>Operations / Timetable Manager</b></td>
+      <td>Rules on operational cause, and holds the running-time and capacity budget that a
+          change spends. Opens on decisions waiting for them.</td>
+    </tr>
+    <tr>
+      <td><b>Rolling Stock Engineer</b></td>
+      <td>Rules on technical cause. Works at unit level — the deepest view in the product.</td>
+    </tr>
+  </table>
+
+  <h2>A ten-minute path through it</h2>
+  <p>
+    If you only have a short time, this route covers the structure without needing any
+    background.
+  </p>
+  <ol>
+    <li>Sign in as the <b>Energy Performance Manager</b> and look at the portfolio view. It is
+        written as a position to be read rather than a dashboard to be operated.</li>
+    <li>Switch role to the <b>Analyst</b> using the control in the top bar. Watch the strip that
+        appears — a role change is treated as a handover, and the product states what has been
+        passed and what that desk is accountable for.</li>
+    <li>Open the case queue. It is grouped by what is blocking each item rather than by status.</li>
+    <li>Open <b>EC-2043</b> and read across the five steps — readiness, evidence, scenario,
+        decision, result. Anything the system generated is marked and traceable back to the
+        service that produced it.</li>
+    <li>Switch to <b>Operations</b> and look at the same case at the decision step. The case is
+        there because of what the change costs, and it is phrased in the units that role manages.</li>
+    <li>Switch back to the <b>Manager</b> and open a closed case to see the result — what was
+        expected against what was actually measured.</li>
+  </ol>
+
+  <h2>Things worth knowing</h2>
+  <div class="note">
+    <p><b>The data is representative.</b> Figures, names and cases are illustrative and sized to
+       be plausible. They are there to make the workflow legible, not to be analysed.</p>
+    <p><b>Not everything is clickable.</b> It is a design prototype, so the paths described above
+       are the ones that are built out. Other areas render but are not interactive.</p>
+    <p><b>Screens vary by role on purpose.</b> If a view looks sparse, that is usually the
+       intended depth for that role rather than a gap.</p>
+    <p><b>Your role selection is remembered</b> in the browser. To start over, return to
+       <code>index.html</code>.</p>
+  </div>
+
+  <h2>What this is exploring</h2>
+  <p>
+    The current Green CBTC tooling shows traction energy performance well. What it does not do is
+    guide someone to what matters first, make responsibility explicit, or connect an insight to a
+    decision and then to a measured result.
+  </p>
+  <p>
+    This prototype tests one answer to that: a single case record that moves between roles, with
+    an automated layer that prepares the analysis and a named person who makes each call. The
+    division between those two — what the platform prepares, and what a person has to decide —
+    is the main thing we are trying to get right.
+  </p>
+
+  <div class="foot">
+    HMAX Energy Management · Phase 1 concept prototype · internal review only.<br>
+    Runs entirely locally. Best viewed in Chrome or Edge at 1440px or wider.
+  </div>
+
+</div>
+</body>
+</html>

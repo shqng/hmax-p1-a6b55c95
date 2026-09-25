@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+
+<title>HMAX · Fleet</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+(function () {
+  var H = window.HMAX, R = H.render, Q = H.query, N = H.net, X = H.charts;
+  var esc = R.esc, em = X.em;
+
+  var ctx = H.shell.mount({ workspace: 'fleet', crumb: 'Monitor', title: 'Fleet performance' });
+  if (!ctx) return;
+
+  var state = {
+    fleet: H.shell.param('fleet', 'B-series'),
+    unit: H.shell.param('unit', null)
+  };
+
+  var fleets = N.fleetSummary();
+  var spec = N.FLEET_SPEC[state.fleet];
+  var summary = fleets.filter(function (f) { return f.id === state.fleet; })[0];
+  var units = N.unitsFor({ fleet: state.fleet }).sort(function (a, b) { return b.index - a.index; });
+
+  var focus = state.unit ? N.unitById(state.unit) : null;
+  if (focus && focus.fleet !== state.fleet) { state.fleet = focus.fleet; }
+  if (state.unit && focus) {
+    spec = N.FLEET_SPEC[focus.fleet];
+    summary = fleets.filter(function (f) { return f.id === focus.fleet; })[0];
+    units = N.unitsFor({ fleet: focus.fleet }).sort(function (a, b) { return b.index - a.index; });
+  }
+
+  var watch = units.filter(function (u) { return u.state === 'watch'; });
+  var median = units[Math.floor(units.length / 2)].index;
+  var p90 = units[Math.floor(units.length * 0.1)].index;
+  var spreadNote = summary.spread > 22 ? 'wide' : summary.spread > 14 ? 'moderate' : 'tight';
+
+  /* ------------------------------------------------------------ controls */
+
+  var controls =
+    '<div class="filterbar mb-5">' +
+      '<div class="filter-group"><span class="filter-label">Fleet</span>' +
+        '<span class="seg" data-seg="fleet">' + fleets.map(function (f) {
+          return '<button data-v="' + esc(f.id) + '"' + (f.id === state.fleet ? ' class="on"' : '') + '>' +
+            esc(f.id) + '</button>';
+        }).join('') + '</span></div>' +
+      '<div class="filter-group"><span class="filter-label">Propulsion</span>' +
+        '<span class="text-[11.5px]" style="color:var(--text-secondary)">' + esc(spec.propulsion) +
+        ' · regenerative braking ' + (spec.regen ? 'fitted' : 'not fitted') +
+        ' · in service since ' + spec.inService + '</span></div>' +
+      '<span class="filter-reset mono text-[10.5px]">' + units.length + ' units</span>' +
+    '</div>';
+
+  /* ------------------------------------------------------- fleet compare */
+
+  var fleetStrip =
+    '<div class="metric-strip grid grid-cols-5 mb-5">' +
+      '<div class="metric"><div class="metric-label">Fleet intensity</div>' +
+        '<div class="metric-value">' + summary.kwhPerKm.toFixed(2) + '<span class="metric-unit">kWh/km</span></div>' +
+        X.gauge(summary.kwhPerKm, summary.baseline) +
+        '<div class="metric-sub">' + X.delta(summary.kwhPerKm, summary.baseline) +
+          ' against the fleet\u2019s own baseline</div></div>' +
+      '<div class="metric"><div class="metric-label">Regenerative recovery</div>' +
+        '<div class="metric-value"' + (summary.regenPct < 25 ? ' style="color:var(--amber)"' : '') + '>' +
+          summary.regenPct.toFixed(1) + '<span class="metric-unit">%</span></div>' +
+        '<div class="metric-sub">' + (spec.regen
+          ? 'Against a design figure of ' + (spec.baseRegen + 2).toFixed(0) + '% under comparable duty.'
+          : 'Not fitted. Recovery here is line receptivity only.') + '</div></div>' +
+      '<div class="metric"><div class="metric-label">Spread across units</div>' +
+        '<div class="metric-value">' + summary.spread + '<span class="metric-unit">index points</span></div>' +
+        '<div class="metric-sub">' + spreadNote.charAt(0).toUpperCase() + spreadNote.slice(1) +
+          '. Median ' + median + ', upper decile ' + p90 + '.</div></div>' +
+      '<div class="metric"><div class="metric-label">Units under watch</div>' +
+        '<div class="metric-value"' + (watch.length ? ' style="color:var(--amber)"' : '') + '>' +
+          watch.length + '<span class="metric-unit">of ' + units.length + '</span></div>' +
+        '<div class="metric-sub">' + (watch.length
+          ? 'Divergence sustained beyond normal variation.'
+          : 'No unit is diverging beyond normal variation.') + '</div></div>' +
+      '<div class="metric"><div class="metric-label">Fleet availability</div>' +
+        '<div class="metric-value">' +
+          (units.reduce(function (a, u) { return a + u.availability; }, 0) / units.length).toFixed(1) +
+          '<span class="metric-unit">%</span></div>' +
+        '<div class="metric-sub">Shown for context. Availability is not managed here.</div></div>' +
+    '</div>';
+
+  /* --------------------------------------------------- distribution plot */
+
+  var distPanel =
+    '<div class="panel mb-5">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Intensity index by unit</div>' +
+          '<div class="panel-sub">Each unit against its own fleet baseline. Index 100 is fleet-typical.</div></div>' +
+        '<div class="panel-actions">' + R.sref('S1') + '</div>' +
+      '</div>' +
+      '<div class="panel-body">' +
+        X.columns(units.map(function (u) {
+          return {
+            label: u.state === 'watch' ? u.id.slice(2) : '',
+            value: u.index, baseline: 100,
+            tone: u.state === 'watch' ? 'bad' : u.index > median + 8 ? 'warn' : 'key',
+            dim: u.state !== 'watch' && u.index <= median + 8
+          };
+        }), { height: 170, zero: false, dp: 0, tickFormat: function (v) { return Math.round(v); } }) +
+        X.note(watch.length
+          ? em(watch.length + ' unit' + (watch.length > 1 ? 's' : '')) + ' in this fleet — ' +
+            em(watch.map(function (u) { return u.id; }).join(' and ')) + ' — sit ' +
+            em(watch.length > 1
+              ? Math.min.apply(null, watch.map(function (u) { return u.index - median; })) + ' to ' +
+                Math.max.apply(null, watch.map(function (u) { return u.index - median; })) + ' index points'
+              : (watch[0].index - median) + ' index points') +
+            ' above the fleet median with regenerative recovery ' +
+            em((summary.regenPct - watch[0].regenPct).toFixed(1) + ' points') + ' below fleet. ' +
+            'A gap in both intensity and recovery together is the pattern associated with braking or ' +
+            'propulsion condition rather than with route or duty.'
+          : 'No unit in this fleet diverges beyond normal variation. The spread is ' + em(spreadNote) +
+            ' at ' + em(summary.spread + ' index points') + ', which is within the range explained by ' +
+            'duty cycle and loading. Intensity on this fleet is therefore unlikely to be a rolling stock question.',
+          'S5') +
+      '</div>' +
+    '</div>';
+
+  /* ----------------------------------------------------- fleet-vs-fleet */
+
+  var comparePanel =
+    '<div class="panel mb-5">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">Across fleets</div>' +
+          '<div class="panel-sub">Regenerative recovery, comparable across fleets as a ratio.</div></div>' +
+      '</div>' +
+      '<div class="panel-body flush">' +
+        '<table class="dt"><thead><tr>' +
+          '<th>Fleet</th><th class="num">Units</th><th>Propulsion</th><th class="num">In service</th>' +
+          '<th class="num">kWh/km</th><th class="num">vs own baseline</th>' +
+          '<th class="num">Regen recovery</th><th class="num">Spread</th><th class="num">Watch</th>' +
+        '</tr></thead><tbody>' +
+        fleets.map(function (f) {
+          return '<tr class="' + (f.id === state.fleet ? 'is-cased' : '') + '">' +
+            '<td class="key"><a class="cell-link" href="fleet.html?fleet=' + esc(f.id) + '">' + esc(f.id) + '</a></td>' +
+            '<td class="num mono">' + f.units + '</td>' +
+            '<td>' + esc(f.propulsion) + (f.regenCapable ? '' : ' · no regen') + '</td>' +
+            '<td class="num mono muted">' + f.inService + '</td>' +
+            '<td class="num mono" style="color:var(--text-primary)">' + f.kwhPerKm.toFixed(2) + '</td>' +
+            '<td class="num">' + X.delta(f.kwhPerKm, f.baseline) + '</td>' +
+            '<td class="num mono"' + (f.regenPct < 25 ? ' style="color:var(--amber)"' : '') + '>' +
+              f.regenPct.toFixed(1) + '%</td>' +
+            '<td class="num mono">' + f.spread + '</td>' +
+            '<td class="num mono"' + (f.watch ? ' style="color:var(--amber)"' : '') + '>' + (f.watch || '—') + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table>' +
+      '</div>' +
+      '<div class="panel-foot">Intensity is not comparable between fleets — each is measured against its own ' +
+        'baseline because duty cycle, gradient exposure and stopping density differ.</div>' +
+    '</div>';
+
+  /* ---------------------------------------------------------- unit detail */
+
+  var unitDetail = '';
+  if (focus) {
+    var rnd = N.seed('unit-trend-' + focus.id);
+    var trend = N.WEEK_LABELS.map(function (w, i) {
+      var drift = focus.state === 'watch' ? (i / 11) * (focus.index - 100) / 100 * focus.baseline : 0;
+      return { week: w, value: Math.round((focus.baseline + drift + (rnd() - 0.5) * 0.08) * 100) / 100,
+               baseline: focus.baseline };
+    });
+    trend[11].value = focus.kwhPerKm;
+
+    var fleetRuns = N.runsFor({ unitId: focus.id });
+    var caseId = focus.caseId;
+
+    unitDetail =
+      '<div class="panel mb-5">' +
+        '<div class="panel-head">' +
+          '<div>' +
+            '<div class="flex items-center gap-3">' +
+              '<span class="panel-title">' + esc(focus.id) + '</span>' +
+              '<span class="state-dot ' + esc(focus.state) + '"></span>' +
+              '<span class="text-[11px]" style="color:var(--text-tertiary)">' +
+                (focus.state === 'watch' ? 'Under watch' : focus.state === 'good' ? 'Reference unit' : 'Normal') + '</span>' +
+            '</div>' +
+            '<div class="panel-sub">' + esc(focus.fleet) + ' · ' + esc(focus.propulsion) + ' · allocated to ' +
+              esc((R.lineOf(focus.line) || {}).name || focus.line) + ' · ' + focus.runsPeriod +
+              ' runs and ' + X.fmtInt(focus.kmPeriod) + ' km in period</div>' +
+          '</div>' +
+          '<div class="panel-actions">' +
+            (caseId
+              ? '<a class="case-link" href="case.html?id=' + esc(caseId) + '">' + esc(caseId) + '</a>'
+              : '<button class="btn-ghost" id="raiseUnit">Raise a case</button>') +
+            '<a class="btn-ghost" href="runs.html?line=' + esc(focus.line) + '">Runs</a>' +
+          '</div>' +
+        '</div>' +
+        '<div class="panel-body">' +
+          '<div class="grid grid-cols-2 gap-6">' +
+            '<div>' +
+              X.series(trend, { height: 180, dp: 2 }) +
+              '<div class="chart-legend">' +
+                '<span class="cl-item"><span class="cl-swatch" style="background:var(--accent)"></span>' +
+                  esc(focus.id) + '</span>' +
+                '<span class="cl-item"><span class="cl-swatch dash"></span>Fleet baseline</span>' +
+              '</div>' +
+            '</div>' +
+            '<div>' +
+              '<div class="grid grid-cols-2 gap-4 mb-4">' +
+                '<div><div class="stat-label">Intensity index</div>' +
+                  '<div class="num-lg mt-1.5"' + (focus.index > 108 ? ' style="color:var(--amber)"' : '') + '>' +
+                    focus.index + '</div>' +
+                  '<div class="text-[10.5px] mt-1 muted">fleet median ' + median + '</div></div>' +
+                '<div><div class="stat-label">Regen recovery</div>' +
+                  '<div class="num-lg mt-1.5"' + (focus.regenPct < summary.regenPct - 3 ? ' style="color:var(--amber)"' : '') + '>' +
+                    focus.regenPct.toFixed(1) + '%</div>' +
+                  '<div class="text-[10.5px] mt-1 muted">fleet ' + summary.regenPct.toFixed(1) + '%</div></div>' +
+                '<div><div class="stat-label">Mean brake rate</div>' +
+                  '<div class="num-lg mt-1.5">' + focus.brakeRate.toFixed(2) + '</div>' +
+                  '<div class="text-[10.5px] mt-1 muted">m/s² at application</div></div>' +
+                '<div><div class="stat-label">Availability</div>' +
+                  '<div class="num-lg mt-1.5">' + focus.availability.toFixed(1) + '%</div>' +
+                  '<div class="text-[10.5px] mt-1 muted">last seen ' + esc(focus.lastSeen) + '</div></div>' +
+              '</div>' +
+              (focus.note
+                ? '<div class="ask-box"><div class="stat-label mb-1">Observation</div>' +
+                  '<div class="text-[12px]" style="color:var(--text-secondary);line-height:1.6">' +
+                    esc(focus.note) + '</div></div>'
+                : '<div class="text-[11.5px]" style="color:var(--text-tertiary);line-height:1.6">' +
+                  'This unit performs within the range explained by duty and loading. No observation is recorded.</div>') +
+            '</div>' +
+          '</div>' +
+          X.note(focus.state === 'watch'
+            ? 'The divergence is ' + em('progressive rather than stepped') + ', which separates a developing ' +
+              'condition from a discrete event such as a modification or a reallocation. Intensity and ' +
+              'recovery have moved together, and the unit has remained on the same line throughout the ' +
+              'period, so route change does not explain it. ' +
+              (caseId ? 'This is under investigation as ' + em(caseId) + '.'
+                      : 'This meets the threshold for a rolling stock investigation.')
+            : 'This unit tracks the fleet baseline within the comparison band across the period. Nothing here ' +
+              'supports a train-related attribution, which is itself a useful finding: it moves the question ' +
+              'back to how and where the unit is being run.', 'S6') +
+        '</div>' +
+      '</div>';
+  }
+
+  /* ------------------------------------------------------------ unit list */
+
+  var listPanel =
+    '<div class="panel">' +
+      '<div class="panel-head">' +
+        '<div><div class="panel-title">' + esc(state.fleet) + ' units</div>' +
+          '<div class="panel-sub">Ranked by intensity index. Select a unit to see its trend and condition ' +
+            'indicators.</div></div>' +
+      '</div>' +
+      '<div class="panel-body flush"><div class="dt-scroll"><table class="dt"><thead><tr>' +
+        '<th>Unit</th><th>Line</th><th class="num">Index</th><th class="num">kWh/km</th>' +
+        '<th class="num">Regen</th><th class="num">Brake rate</th><th class="num">Runs</th>' +
+        '<th class="num">km</th><th class="num">Availability</th><th>State</th>' +
+      '</tr></thead><tbody>' +
+      units.map(function (u) {
+        return '<tr class="' + (focus && u.id === focus.id ? 'is-cased' : u.state === 'watch' ? 'is-flagged' : '') + '">' +
+          '<td class="key"><a class="cell-link" href="fleet.html?fleet=' + esc(u.fleet) + '&unit=' + esc(u.id) + '">' +
+            esc(u.id) + '</a></td>' +
+          '<td class="muted">' + esc((R.lineOf(u.line) || {}).name || u.line) + '</td>' +
+          '<td class="num mono"' + (u.index > 108 ? ' style="color:var(--amber)"' : '') + '>' + u.index + '</td>' +
+          '<td class="num mono" style="color:var(--text-primary)">' + u.kwhPerKm.toFixed(2) + '</td>' +
+          '<td class="num mono"' + (u.regenPct < summary.regenPct - 3 ? ' style="color:var(--amber)"' : '') + '>' +
+            u.regenPct.toFixed(1) + '%</td>' +
+          '<td class="num mono muted">' + u.brakeRate.toFixed(2) + '</td>' +
+          '<td class="num mono">' + u.runsPeriod + '</td>' +
+          '<td class="num mono muted">' + X.fmtInt(u.kmPeriod) + '</td>' +
+          '<td class="num mono">' + u.availability.toFixed(1) + '%</td>' +
+          '<td><span class="state-dot ' + esc(u.state) + '"></span>' +
+            '<span class="text-[10.5px] ml-1.5 muted">' + (u.state === 'watch' ? 'watch' : '') + '</span></td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div></div>' +
+    '</div>';
+
+  document.getElementById('main').innerHTML =
+    '<p class="lede mb-5">Unit and fleet energy condition, isolated from route and operating effects.</p>' +
+    controls + fleetStrip + distPanel + unitDetail + comparePanel + listPanel;
+
+  /* -------------------------------------------------------- interaction */
+
+  var wrap = document.querySelector('[data-seg="fleet"]');
+  if (wrap) {
+    var bs = wrap.getElementsByTagName('button');
+    for (var j = 0; j < bs.length; j++) {
+      (function (b) {
+        b.addEventListener('click', function () {
+          location.href = 'fleet.html?fleet=' + encodeURIComponent(b.getAttribute('data-v'));
+        });
+      })(bs[j]);
+    }
+  }
+
+  var ru = document.getElementById('raiseUnit');
+  if (ru && focus) ru.addEventListener('click', function () { H.raise.open(focus); });
+})();
+</script>
+</body>
+</html>
