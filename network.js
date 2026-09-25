@@ -62,23 +62,23 @@ var WEEK_LABELS = ['W27','W28','W29','W30','W31','W32','W33','W34','W35','W36','
    ----------------------------------------------------------------------- */
 
 var LINE_STATIONS = {
-  L3: ['Harbour Point','Dockside','Mill Lane','St Anne\u2019s','Central Exchange','Cathedral Square',
-       'Victoria Park','Brunel Street','Southgate','Fairview','Northgate','Riverside','Kingsway',
-       'Eastfield','Ashcroft','Whitfield','Grange Road','Meadowbank','Elmwood','Highbridge','Lakeside'],
-  L1: ['Westport','Carlton','Abbey Wood','Tanners Hill','Old Market','Central Exchange','Guildhall',
-       'Parkway','Bellevue','Hollow Lane','Stanmore','Clifton Vale','Redhill','Sandford','Aldergate',
-       'Weirside','Foxton','Marsh End','Northport'],
-  L2: ['Seaforth','Bayview','Trinity','Lower Quay','Cathedral Square','Exchange North','Regent Street',
-       'Alder Park','Crossway','Broadfield','Lilywhite','Kingsmead','Havenbrook','Oakhurst','Priory',
-       'Talbot Road','Dunmore','Chester Fields','Netherby','Amberley','Glasson','Winterbourne','Eastport'],
-  L4: ['Airport Central','Terminal North','Deanfield','Ravensbourne','Larkhall','Old Market',
-       'Copperfield','Wheatley','Sunnyside','Ferngrove','Bishopgate','Cranleigh','Selby','Carrington']
+  L3: ['HarbourFront','Outram Park','Chinatown','Clarke Quay','Dhoby Ghaut','Little India','Farrer Park',
+       'Boon Keng','Potong Pasir','Woodleigh','Serangoon','Kovan','Hougang','Buangkok','Sengkang',
+       'Punggol','Punggol Coast'],
+  L1: ['Jurong East','Bukit Batok','Bukit Gombak','Choa Chu Kang','Yew Tee','Kranji','Marsiling',
+       'Woodlands','Admiralty','Sembawang','Canberra','Yishun','Khatib','Yio Chu Kang','Ang Mo Kio',
+       'Bishan','Braddell','Toa Payoh','Novena'],
+  L2: ['Pasir Ris','Tampines','Simei','Tanah Merah','Bedok','Kembangan','Eunos','Paya Lebar','Aljunied',
+       'Kallang','Lavender','Bugis','City Hall','Raffles Place','Tanjong Pagar','Outram Park',
+       'Tiong Bahru','Redhill','Queenstown','Commonwealth','Buona Vista','Dover','Clementi'],
+  L4: ['Dhoby Ghaut','Bras Basah','Esplanade','Promenade','Nicoll Highway','Stadium','Mountbatten',
+       'Dakota','Paya Lebar','MacPherson','Tai Seng','Bartley','Serangoon','Lorong Chuan']
 };
 
 /* Measured line record. deltaPct is derived, never stored. */
 var LINES = [
   { id: 'L3', kwhPerKm: 3.04, baseline: 2.81, baselineId: 'BL-07', mwh: 4180, regenPct: 31.4,
-    runs: 11240, km: 28.9, stations: 21, fleets: ['B-series'], punctuality: 94.1, dwellMean: 34, openCases: 3,
+    runs: 11240, km: 28.9, stations: 17, fleets: ['B-series'], punctuality: 94.1, dwellMean: 34, openCases: 3,
     trendSeed: 'L3-trend', drift: 'rising' },
   { id: 'L2', kwhPerKm: 2.88, baseline: 2.79, baselineId: 'BL-05', mwh: 5310, regenPct: 33.8,
     runs: 12960, km: 31.2, stations: 23, fleets: ['A-series','B-series'], punctuality: 95.7, dwellMean: 31, openCases: 1,
@@ -233,13 +233,13 @@ var UNITS = (function () {
 
 /* Story-critical hops, pinned to the figures the cases assert. */
 var PINNED_HOPS = {
-  'L3-NB-11': { segmentId: 'SEG-317', km: 2.40, gradient: 1.2, kwhPerKm: 3.25, baseline: 2.55, runs: 412,
+  'L3-NB-10': { segmentId: 'SEG-317', km: 2.40, gradient: 1.2, kwhPerKm: 3.25, baseline: 2.55, runs: 412,
                 dwellMean: 31, dwellP90: 44, runtimeMean: 148, runtimeSd: 11.4, regenPct: 27.8, coastPct: 19,
                 speedClass: 'Late brake', caseId: 'EC-2043' },
-  'L3-NB-12': { segmentId: 'SEG-318', km: 1.90, gradient: -0.4, kwhPerKm: 2.96, baseline: 2.62, runs: 398,
+  'L3-NB-11': { segmentId: 'SEG-318', km: 1.90, gradient: -0.4, kwhPerKm: 2.96, baseline: 2.62, runs: 398,
                 dwellMean: 52, dwellP90: 78, runtimeMean: 121, runtimeSd: 14.8, regenPct: 30.1, coastPct: 24,
                 speedClass: 'Held', caseId: 'EC-2047' },
-  'L3-NB-13': { segmentId: 'SEG-322', km: 3.10, gradient: 0.2, kwhPerKm: 2.74, baseline: 2.68, runs: 401,
+  'L3-NB-12': { segmentId: 'SEG-322', km: 3.10, gradient: 0.2, kwhPerKm: 2.74, baseline: 2.68, runs: 401,
                 dwellMean: 28, dwellP90: 39, runtimeMean: 186, runtimeSd: 8.2, regenPct: 33.4, coastPct: 36,
                 speedClass: 'Coasting', caseId: null }
 };
@@ -476,28 +476,28 @@ var DISTRIBUTIONS = {
    ----------------------------------------------------------------------- */
 
 var DEVIATIONS = [
-  { id: 'DV-1184', scope: 'Line 3 \u00b7 Northgate \u2192 Riverside \u00b7 NB', lineId: 'L3',
-    interstationId: 'L3-NB-11', kwhPerKm: 3.25, baseline: 2.55, runs: 412, weeks: 6,
+  { id: 'DV-1184', scope: 'NEL \u00b7 Woodleigh \u2192 Serangoon \u00b7 NB', lineId: 'L3',
+    interstationId: 'L3-NB-10', kwhPerKm: 3.25, baseline: 2.55, runs: 412, weeks: 6,
     annualMWh: 214, persistence: 'sustained', state: 'case', caseId: 'EC-2043' },
-  { id: 'DV-1201', scope: 'Line 3 \u00b7 Riverside \u2192 Kingsway \u00b7 NB peak', lineId: 'L3',
-    interstationId: 'L3-NB-12', kwhPerKm: 2.96, baseline: 2.62, runs: 398, weeks: 4,
+  { id: 'DV-1201', scope: 'NEL \u00b7 Serangoon \u2192 Kovan \u00b7 NB peak', lineId: 'L3',
+    interstationId: 'L3-NB-11', kwhPerKm: 2.96, baseline: 2.62, runs: 398, weeks: 4,
     annualMWh: 96, persistence: 'sustained', state: 'case', caseId: 'EC-2047' },
-  { id: 'DV-1209', scope: 'Line 3 \u00b7 B-214 and B-227 \u00b7 all services', lineId: 'L3',
+  { id: 'DV-1209', scope: 'NEL \u00b7 B-214 and B-227 \u00b7 all services', lineId: 'L3',
     interstationId: null, kwhPerKm: 3.31, baseline: 2.81, runs: 624, weeks: 6,
     annualMWh: 78, persistence: 'widening', state: 'case', caseId: 'EC-2051' },
-  { id: 'DV-1216', scope: 'Line 2 \u00b7 Trinity \u2192 Lower Quay \u00b7 NB', lineId: 'L2',
+  { id: 'DV-1216', scope: 'EWL \u00b7 Simei \u2192 Tanah Merah \u00b7 NB', lineId: 'L2',
     interstationId: 'L2-NB-3', kwhPerKm: 3.02, baseline: 2.79, runs: 288, weeks: 3,
     annualMWh: 41, persistence: 'sustained', state: 'candidate', caseId: null },
-  { id: 'DV-1219', scope: 'Line 1 \u00b7 A-series \u00b7 off-peak southbound', lineId: 'L1',
+  { id: 'DV-1219', scope: 'NSL \u00b7 A-series \u00b7 off-peak southbound', lineId: 'L1',
     interstationId: null, kwhPerKm: 2.88, baseline: 2.62, runs: 512, weeks: 5,
     annualMWh: 63, persistence: 'sustained', state: 'candidate', caseId: null },
-  { id: 'DV-1223', scope: 'Line 4 \u00b7 C-series \u00b7 regenerative recovery', lineId: 'L4',
+  { id: 'DV-1223', scope: 'CCL \u00b7 C-series \u00b7 regenerative recovery', lineId: 'L4',
     interstationId: null, kwhPerKm: 2.51, baseline: 2.44, runs: 740, weeks: 8,
     annualMWh: 52, persistence: 'sustained', state: 'case', caseId: 'EC-2044' },
-  { id: 'DV-1228', scope: 'Line 2 \u00b7 Broadfield \u2192 Lilywhite \u00b7 SB', lineId: 'L2',
+  { id: 'DV-1228', scope: 'EWL \u00b7 Kallang \u2192 Lavender \u00b7 SB', lineId: 'L2',
     interstationId: null, kwhPerKm: 2.94, baseline: 2.79, runs: 141, weeks: 2,
     annualMWh: 18, persistence: 'intermittent', state: 'held', caseId: null },
-  { id: 'DV-1231', scope: 'Line 1 \u00b7 Parkway \u2192 Bellevue \u00b7 NB', lineId: 'L1',
+  { id: 'DV-1231', scope: 'NSL \u00b7 Woodlands \u2192 Admiralty \u00b7 NB', lineId: 'L1',
     interstationId: null, kwhPerKm: 2.79, baseline: 2.62, runs: 96, weeks: 1,
     annualMWh: 11, persistence: 'emerging', state: 'held', caseId: null }
 ];

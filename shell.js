@@ -61,7 +61,6 @@ function sidebar(roleId, active) {
   }).join('');
 
   return '<a class="sidebar-brand" href="index.html">' +
-      '<span class="brand-mark">H</span>' +
       '<span><span class="brand-name">HMAX</span>' +
       '<span class="brand-sub">Energy Management</span></span></a>' +
     body +

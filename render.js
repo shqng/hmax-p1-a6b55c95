@@ -496,6 +496,131 @@ function envelopeBand(c, bl) {
   '</div>';
 }
 
+/* ---------------------------------------------------------------------------
+   FORMAL EVIDENCE BLOCKS
+   The three structures the evidence step opens with: a decomposition of the
+   gap that sums to a stated total, a like-for-like movement comparison, and
+   a current / achievable / difference table with a source against every row.
+   ------------------------------------------------------------------------- */
+
+var GAP_STATE = {
+  own:       { label: 'this case',      colour: 'var(--amber)' },
+  related:   { label: 'related',        colour: 'var(--blue)' },
+  elsewhere: { label: 'elsewhere',      colour: 'var(--blue)' },
+  unknown:   { label: 'not explained',  colour: 'var(--text-tertiary)' }
+};
+
+function gapDecomposition(c) {
+  var g = c.gapDecomposition;
+  if (!g) return '';
+  var max = 0;
+  g.items.forEach(function (i) { if (i.value > max) max = i.value; });
+
+  var rows = g.items.map(function (it, i) {
+    var st = GAP_STATE[it.state] || GAP_STATE.unknown;
+    var disp = esc(it.disposition);
+    if (it.ref) {
+      disp = disp.replace(esc(it.ref),
+        '<a href="case.html?id=' + esc(it.ref) + '" style="color:var(--blue)">' + esc(it.ref) + '</a>');
+    }
+    return '<div class="gap-row">' +
+      '<span class="gap-n">' + (i + 1) + '</span>' +
+      '<div style="min-width:0">' +
+        '<div class="gap-stmt">' + esc(it.statement) + '</div>' +
+        '<div class="gap-disp">' + disp + '</div>' +
+        '<div class="gap-bar"><span style="width:' + (it.value / max * 100).toFixed(1) +
+          '%;background:' + st.colour + '"></span></div>' +
+      '</div>' +
+      '<span class="gap-val mono" style="color:' + st.colour + '">+' + it.value.toFixed(2) + '</span>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="surface rounded-xl p-5 mb-5">' +
+    '<div class="flex items-start justify-between gap-6 mb-1">' +
+      '<div class="ev-sec">Observed performance gap</div>' +
+      '<div class="src-chip">' + esc(g.sourceRef) + ' · ' + esc(g.source) + '</div>' +
+    '</div>' +
+    '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6;max-width:70ch">' +
+      'The gap is separated into named contributors before anything is attributed. Each one carries its ' +
+      'own disposition, so what this case can act on is distinguished from what belongs elsewhere.</div>' +
+    rows +
+    '<div class="gap-total">' +
+      '<span class="gap-total-label">' + esc(g.totalLabel) + '</span>' +
+      '<span class="gap-total-val mono">+' + g.total.toFixed(2) + ' ' + esc(g.unit) + '</span>' +
+    '</div>' +
+    '<div class="mt-3 flex items-center gap-2">' + smartTag('Decomposed') + sref('S5') + '</div>' +
+  '</div>';
+}
+
+var PROFILE_TONES = { good: 'var(--green)', neutral: 'var(--blue)', bad: 'var(--amber)' };
+
+function profileComparison(c) {
+  var p = c.profileComparison;
+  if (!p) return '';
+  var tones = p.legend.map(function (l) { return PROFILE_TONES[l.tone] || 'var(--blue)'; });
+
+  var rows = p.rows.map(function (r) {
+    var segs = r.parts.map(function (v, i) {
+      return '<span style="width:' + v + '%;background:' + tones[i] + '">' +
+        (v >= 14 ? v + '%' : '') + '</span>';
+    }).join('');
+    return '<div class="pc-row' + (r.mark ? ' is-subject' : '') + '">' +
+      '<div class="pc-label">' + esc(r.label) + '</div>' +
+      '<div class="pc-bar">' + segs + '</div>' +
+    '</div>';
+  }).join('');
+
+  var key = p.legend.map(function (l, i) {
+    return '<span class="pc-key"><i style="background:' + tones[i] + '"></i>' + esc(l.label) + '</span>';
+  }).join('');
+
+  return '<div class="surface rounded-xl p-5 mb-5">' +
+    '<div class="ev-sec mb-1">Movement profile comparison</div>' +
+    '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6;max-width:70ch">' +
+      esc(p.method) + '. The affected segments are shown against the line average and against a ' +
+      'reference of comparable gradient, so the difference cannot be dismissed as terrain.</div>' +
+    rows + '<div class="pc-legend">' + key + '</div>' +
+      '<div class="mt-4">' + readingBlock({ reading: p.reading }, {}) + '</div>' +
+  '</div>';
+}
+
+var IND_STATE = { adverse: 'var(--amber)', ok: 'var(--green)', neutral: 'var(--text-secondary)' };
+
+function indicatorTable(c) {
+  var d = c.indicators;
+  if (!d) return '';
+  var rows = d.rows.map(function (r) {
+    return '<tr>' +
+      '<td class="ind-name">' + esc(r.name) + '</td>' +
+      '<td class="mono">' + esc(r.current) + '</td>' +
+      '<td class="mono" style="color:var(--text-tertiary)">' + esc(r.achievable) + '</td>' +
+      '<td class="mono" style="color:' + (IND_STATE[r.state] || IND_STATE.neutral) + '">' + esc(r.diff) + '</td>' +
+      '<td><span class="src-pill">' + esc(r.source) + '</span></td>' +
+    '</tr>';
+  }).join('');
+
+  var legend = d.sources.map(function (s) {
+    return '<span class="src-legend"><span class="src-pill">' + esc(s.id) + '</span>' + esc(s.label) + '</span>';
+  }).join('');
+
+  var cp = d.completeness;
+  return '<div class="surface rounded-xl p-5 mb-5">' +
+    '<div class="ev-sec mb-1">Indicator summary</div>' +
+    '<div class="text-[11.5px] mb-4" style="color:var(--text-secondary);line-height:1.6;max-width:70ch">' +
+      'Every indicator is stated as current against achievable, with the difference and the system it ' +
+      'came from. Non-numeric findings are carried in the same table rather than in a separate note.</div>' +
+    '<table class="ind-table"><thead><tr>' +
+      '<th>Indicator</th><th>Current</th><th>Achievable</th><th>Difference</th><th>Source</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<div class="ind-legend">' + legend + '</div>' +
+    '<div class="ind-foot">' +
+      '<span class="mono" style="color:var(--text-primary);font-weight:600">' + cp.pct + '%</span>' +
+      ' of required parameters present · missing: ' + esc(cp.missing.join(', ')) +
+      ' · <span class="mono">\u2265' + cp.floor + '%</span> required to stay auto-promoted' +
+    '</div>' +
+  '</div>';
+}
+
 function precedentCard(c) {
   var all = Q.precedentFor(c);
   var matches = all.filter(function (p) { return p.realisation != null; });
@@ -659,6 +784,8 @@ global.HMAX.render = {
   budgetMeter: budgetMeter, scenarioCards: scenarioCards,
   realisationBar: realisationBar, confounderRows: confounderRows, planCard: planCard,
   coverageGrid: coverageGrid, envelopeBand: envelopeBand, precedentCard: precedentCard,
+  gapDecomposition: gapDecomposition, profileComparison: profileComparison,
+  indicatorTable: indicatorTable,
   trail: trail, chart: chart, kpi: kpi
 };
 

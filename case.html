@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 <meta name="googlebot" content="noindex, nofollow">
-
 <title>HMAX · Case</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="vendor/tailwind.js"></script>
@@ -246,7 +245,7 @@
     '<div class="surface rounded-xl p-5 mb-5">' +
       '<div class="flex items-start justify-between gap-6 mb-3">' +
         '<div>' +
-          '<div class="text-[13.5px] font-semibold">Where the cause sits</div>' +
+          '<div class="ev-sec mb-1">Where the cause sits</div>' +
           '<div class="text-[11.5px] mt-1" style="color:var(--text-secondary);line-height:1.6;max-width:62ch">' +
             'A single branch is proposed rather than a list of possibilities, because the branch determines ' +
             'which specialist rules on the case and which levers are even available.</div>' +
@@ -280,7 +279,7 @@
   var baselineBlock =
     '<div class="surface rounded-xl p-5 mb-5">' +
       '<div class="flex items-start justify-between gap-6 mb-3">' +
-        '<div><div class="text-[13.5px] font-semibold">What it is being compared against</div>' +
+        '<div><div class="ev-sec mb-1">Comparison basis</div>' +
           '<div class="text-[11.5px] mt-1" style="color:var(--text-secondary);line-height:1.6;max-width:62ch">' +
             R.esc(bl.label) + '. ' + R.esc(bl.method) + '</div></div>' +
         '<div style="text-align:right;flex-shrink:0">' +
@@ -315,9 +314,13 @@
   }).join('');
 
   var tabEvidence =
-    attrBlock + baselineBlock +
+    R.gapDecomposition(c) +
+    baselineBlock +
+    R.indicatorTable(c) +
+    R.profileComparison(c) +
+    attrBlock +
     '<div class="surface rounded-xl p-5">' +
-      '<div class="text-[13.5px] font-semibold">The evidence, as an argument</div>' +
+      '<div class="ev-sec mb-1">Supporting analysis</div>' +
       '<div class="text-[11.5px] mt-1 mb-1" style="color:var(--text-secondary);line-height:1.6;max-width:72ch">' +
         'Each block answers one question in sequence, and each chart arrives with its reading already written. ' +
         'A reading can be replaced — the original is kept alongside the replacement.</div>' +

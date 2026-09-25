@@ -273,17 +273,17 @@ var SERVICES = [
    ------------------------------------------------------------------------- */
 
 var NETWORK = {
-  operator: 'Metro Operations — Northern Network',
+  operator: 'Metro Operations — Singapore Network',
   lines: [
-    { id: 'L1', name: 'Line 1', km: 24.6, stations: 19, fleets: ['A-series'],             intensity: 2.71, baselineId: 'BL-03' },
-    { id: 'L2', name: 'Line 2', km: 31.2, stations: 23, fleets: ['A-series', 'B-series'], intensity: 2.88, baselineId: 'BL-05' },
-    { id: 'L3', name: 'Line 3', km: 28.9, stations: 21, fleets: ['B-series'],             intensity: 3.04, baselineId: 'BL-07' },
-    { id: 'L4', name: 'Line 4', km: 18.4, stations: 14, fleets: ['C-series'],             intensity: 2.42, baselineId: 'BL-09' }
+    { id: 'L1', name: 'North South Line', km: 24.6, stations: 19, fleets: ['A-series'],             intensity: 2.71, baselineId: 'BL-03' },
+    { id: 'L2', name: 'East West Line',   km: 31.2, stations: 23, fleets: ['A-series', 'B-series'], intensity: 2.88, baselineId: 'BL-05' },
+    { id: 'L3', name: 'North East Line',  km: 28.9, stations: 17, fleets: ['B-series'],             intensity: 3.04, baselineId: 'BL-07' },
+    { id: 'L4', name: 'Circle Line',      km: 18.4, stations: 14, fleets: ['C-series'],             intensity: 2.42, baselineId: 'BL-09' }
   ],
   segments: [
-    { id: 'SEG-317', lineId: 'L3', name: 'Northgate \u2192 Riverside', km: 2.4, gradient: '+1.2%', stops: 1 },
-    { id: 'SEG-318', lineId: 'L3', name: 'Riverside \u2192 Kingsway',  km: 1.9, gradient: '-0.4%', stops: 1 },
-    { id: 'SEG-322', lineId: 'L3', name: 'Kingsway \u2192 Eastfield',  km: 3.1, gradient: '+0.2%', stops: 1 }
+    { id: 'SEG-317', lineId: 'L3', name: 'Woodleigh \u2192 Serangoon', km: 2.4, gradient: '+1.2%', stops: 1 },
+    { id: 'SEG-318', lineId: 'L3', name: 'Serangoon \u2192 Kovan',     km: 1.9, gradient: '-0.4%', stops: 1 },
+    { id: 'SEG-322', lineId: 'L3', name: 'Kovan \u2192 Hougang',       km: 3.1, gradient: '+0.2%', stops: 1 }
   ],
   fleets: [
     { id: 'A-series', units: 34, propulsion: 'IGBT', regen: true,  inService: 2016 },
@@ -300,7 +300,7 @@ var NETWORK = {
 var BASELINES = [
   {
     id: 'BL-07', version: 4, type: 'matched-run-decile',
-    label: 'Line 3 matched-run decile \u2014 B-series, northbound, off-peak',
+    label: 'NEL matched-run decile \u2014 B-series, northbound, off-peak',
     method: 'Best decile of comparable runs over the segment, matched on gradient, stopping pattern, load band and fleet. Rebuilt monthly on a rolling 12-week sample.',
     validFrom: '2026-07-01', validTo: null, band: '\u00b11.8%', sampleRuns: 412,
     value: 2.55, unit: 'kWh/km',
@@ -316,14 +316,14 @@ var BASELINES = [
       ]
     },
     alternatives: [
-      { id: 'BL-05', label: 'Line 2 peer comparison',        rejected: 'Different fleet mix and gradient profile' },
+      { id: 'BL-05', label: 'EWL peer comparison',        rejected: 'Different fleet mix and gradient profile' },
       { id: 'BL-T1', label: 'Simulated optimum (SPSIM)',     rejected: 'Outside validated applicability envelope for this segment' },
       { id: 'BL-C1', label: 'Contractual intensity target',  rejected: 'Network-level target, not segment-comparable' }
     ]
   },
-  { id: 'BL-03', version: 6, type: 'matched-run-decile', label: 'Line 1 matched-run decile', method: 'As BL-07, applied to Line 1 A-series services.', validFrom: '2026-07-01', validTo: null, band: '\u00b12.1%', sampleRuns: 389, value: 2.48, unit: 'kWh/km', comparability: { score: 'strong', factors: [] }, alternatives: [] },
-  { id: 'BL-05', version: 5, type: 'matched-run-decile', label: 'Line 2 matched-run decile', method: 'As BL-07, applied to Line 2 mixed-fleet services.', validFrom: '2026-07-01', validTo: null, band: '\u00b12.6%', sampleRuns: 344, value: 2.61, unit: 'kWh/km', comparability: { score: 'medium', factors: [] }, alternatives: [] },
-  { id: 'BL-09', version: 3, type: 'historical-self',    label: 'Line 4 historical self \u2014 rolling 12 months', method: 'Same services, same period last year, seasonally corrected.', validFrom: '2026-04-01', validTo: null, band: '\u00b13.4%', sampleRuns: 201, value: 2.39, unit: 'kWh/km', comparability: { score: 'weak', factors: [] }, alternatives: [] }
+  { id: 'BL-03', version: 6, type: 'matched-run-decile', label: 'NSL matched-run decile', method: 'As BL-07, applied to NSL A-series services.', validFrom: '2026-07-01', validTo: null, band: '\u00b12.1%', sampleRuns: 389, value: 2.48, unit: 'kWh/km', comparability: { score: 'strong', factors: [] }, alternatives: [] },
+  { id: 'BL-05', version: 5, type: 'matched-run-decile', label: 'EWL matched-run decile', method: 'As BL-07, applied to EWL mixed-fleet services.', validFrom: '2026-07-01', validTo: null, band: '\u00b12.6%', sampleRuns: 344, value: 2.61, unit: 'kWh/km', comparability: { score: 'medium', factors: [] }, alternatives: [] },
+  { id: 'BL-09', version: 3, type: 'historical-self',    label: 'CCL historical self \u2014 rolling 12 months', method: 'Same services, same period last year, seasonally corrected.', validFrom: '2026-04-01', validTo: null, band: '\u00b13.4%', sampleRuns: 201, value: 2.39, unit: 'kWh/km', comparability: { score: 'weak', factors: [] }, alternatives: [] }
 ];
 
 /* ---------------------------------------------------------------------------
@@ -338,7 +338,7 @@ var CASES = [
 {
   id: 'EC-2043',
   title: 'Coasting profile adjustment for high-energy runs',
-  hypothesis: sys('Coasting looks to be starting too late on the Northgate approach, adding avoidable traction demand across the last 600 m before braking.', 'S1', '2026-09-08T04:12:00Z'),
+  hypothesis: sys('Coasting looks to be starting too late on the Woodleigh approach, adding avoidable traction demand across the last 600 m before braking.', 'S1', '2026-09-08T04:12:00Z'),
 
   origin: { type: 'signal', ref: 'SIG-11842', at: '2026-09-08T04:12:00Z',
             note: 'Correlated from 1,842 signals scanned in 24h; 23 candidates; 3 promoted.' },
@@ -377,6 +377,58 @@ var CASES = [
         'Two units show a 6% wider gap than the rest of the cohort'
       ]
     }
+  },
+
+  gapDecomposition: {
+    source: 'Energy Analytics Dashboard',
+    sourceRef: 'EAD',
+    unit: 'kWh/km',
+    total: 0.70,
+    totalLabel: 'Total gap to achievable',
+    items: [
+      { statement: 'Coasting initiated later than the best-decile profile',
+        disposition: 'Addressable through this case', state: 'own', value: 0.41 },
+      { statement: 'Early segment entry converted into higher running speed',
+        disposition: 'Related timetable opportunity \u2014 EC-2047', state: 'related', value: 0.14, ref: 'EC-2047' },
+      { statement: 'Two B-series units running wider than the cohort',
+        disposition: 'Under separate review \u2014 EC-2051', state: 'elsewhere', value: 0.09, ref: 'EC-2051' },
+      { statement: 'Residual spread not explained by the matched factors',
+        disposition: 'Additional data required', state: 'unknown', value: 0.06 }
+    ]
+  },
+
+  profileComparison: {
+    method: 'Share of segment distance by traction state, matched runs',
+    legend: [
+      { label: 'Coasting',          tone: 'good' },
+      { label: 'Balanced traction', tone: 'neutral' },
+      { label: 'High traction',     tone: 'bad' }
+    ],
+    rows: [
+      { label: 'SEG-317 Woodleigh \u2192 Serangoon', mark: true,  parts: [19, 46, 35] },
+      { label: 'SEG-318 Serangoon \u2192 Kovan',     mark: true,  parts: [24, 48, 28] },
+      { label: 'NEL northbound average',             mark: false, parts: [31, 47, 22] },
+      { label: 'Comparable-gradient reference',      mark: false, parts: [38, 45, 17] }
+    ],
+    reading: sys('SEG-317 spends 35% of its distance under high traction against 17% on the comparable-gradient reference. The coasting share is the single largest difference, and it is the part this case can act on.', 'S5', '2026-09-11T10:20:00Z')
+  },
+
+  indicators: {
+    completeness: { pct: 94, floor: 70, missing: ['passenger load', 'live regulation log'] },
+    sources: [
+      { id: 'EAD', label: 'Energy Analytics Dashboard' },
+      { id: 'OER', label: 'Operational Efficiency Report' },
+      { id: 'DAS', label: 'Driver Advisory System' }
+    ],
+    rows: [
+      { name: 'Traction intensity',          current: '3.25 kWh/km', achievable: '2.55 kWh/km', diff: '+0.70 kWh/km', state: 'adverse', source: 'EAD' },
+      { name: 'Coasting share of distance',  current: '19%',         achievable: '31%',         diff: '\u221212 pts',  state: 'adverse', source: 'EAD' },
+      { name: 'Coasting initiation point',   current: 'median',      achievable: 'best decile', diff: '210 m earlier', state: 'adverse', source: 'DAS' },
+      { name: 'Regenerative recovery',       current: '27.8%',       achievable: '28.4%',       diff: '\u22120.6 pts', state: 'neutral', source: 'EAD' },
+      { name: 'Segment runtime',             current: '148 s',       achievable: '159 s',       diff: '+11 s',         state: 'neutral', source: 'OER' },
+      { name: 'Recovery margin retained',    current: '42 s',        achievable: '31 s',        diff: 'above 17 s floor', state: 'ok',   source: 'OER' },
+      { name: 'Advisory table version',      current: 'v3.1 (2021)', achievable: 'v4.0',        diff: 'review required', state: 'adverse', source: 'DAS' }
+    ]
   },
 
   readiness: [
@@ -512,8 +564,8 @@ var CASES = [
 },
 
 {
-  id: 'EC-2047', title: 'Extended dwell absorbing recovery margin at Kingsway',
-  hypothesis: sys('Dwell overrun at Kingsway northbound appears to be pushing recovery margin into higher running speed on the next segment.', 'S1', '2026-09-14T04:20:00Z'),
+  id: 'EC-2047', title: 'Extended dwell absorbing recovery margin at Kovan',
+  hypothesis: sys('Dwell overrun at Kovan northbound appears to be pushing recovery margin into higher running speed on the next segment.', 'S1', '2026-09-14T04:20:00Z'),
   origin: { type: 'signal', ref: 'SIG-11903', at: '2026-09-14T04:20:00Z', note: null },
   scope: { lineId: 'L3', segmentId: 'SEG-318', direction: 'Northbound', fleet: 'B-series', services: 'Peak' },
   stage: { key: 'simulate' },
@@ -545,7 +597,7 @@ var CASES = [
 },
 
 {
-  id: 'EC-2044', title: 'Regenerative recovery shortfall, C-series on Line 4',
+  id: 'EC-2044', title: 'Regenerative recovery shortfall, C-series on CCL',
   hypothesis: sys('C-series units have no regenerative capability, which leaves a structural intensity gap. No operating change will close it.', 'S1', '2026-09-09T04:15:00Z'),
   origin: { type: 'signal', ref: 'SIG-11856', at: '2026-09-09T04:15:00Z', note: null },
   scope: { lineId: 'L4', segmentId: null, direction: 'Both', fleet: 'C-series', services: 'All', units: ['C-206'] },
@@ -579,7 +631,7 @@ var CASES = [
 },
 
 {
-  id: 'EC-2039', title: 'Speed profile smoothing, Line 1 southbound',
+  id: 'EC-2039', title: 'Speed profile smoothing, NSL southbound',
   hypothesis: human('Acceleration profile on departure is steeper than necessary for the achieved headway.', 'Priya Raman', '2026-08-21T10:00:00Z'),
   origin: { type: 'manual', ref: null, at: '2026-08-21T10:00:00Z', note: 'Raised from a driver feedback observation.' },
   scope: { lineId: 'L1', segmentId: null, direction: 'Southbound', fleet: 'A-series', services: 'Off-peak' },
@@ -649,7 +701,7 @@ var CASES = [
   outcome: { verdict: 'confirmed', modelled: 128, verified: 118, realisation: 92, unit: 'MWh/yr',
              at: '2026-09-01T09:00:00Z', by: 'Anna Clark',
              reasoning: 'Verified reduction of 2.9% against a 2.5% threshold across the full 8-week window. One confounder was observed and assessed as immaterial.',
-             confoundersObserved: [{ what: 'Minor timetable adjustment, Line 2 southbound', at: '2026-07-22', assessed: 'immaterial', by: 'S10' }] },
+             confoundersObserved: [{ what: 'Minor timetable adjustment, EWL southbound', at: '2026-07-22', assessed: 'immaterial', by: 'S10' }] },
   owner: 'epm', assignee: 'epm', assigneeName: 'Anna Clark',
   awaiting: null, due: null, opened: '2026-06-12', closed: '2026-09-01',
   trail: [
@@ -665,18 +717,18 @@ var CASES = [
    ------------------------------------------------------------------------- */
 
 var CANDIDATES = [
-  { id: 'CD-0913', title: 'Braking rate variance, Line 2 northbound approach',
-    scope: 'Line 2 \u00b7 SEG-214 \u00b7 A-series', gap: 0.44, unit: 'kWh/km', runs: 198, annualMWh: 72,
+  { id: 'CD-0913', title: 'Braking rate variance, EWL northbound approach',
+    scope: 'EWL \u00b7 SEG-214 \u00b7 A-series', gap: 0.44, unit: 'kWh/km', runs: 198, annualMWh: 72,
     completeness: 89, confidence: 'medium', promotedAt: '2026-09-19T04:10:00Z',
     reading: sys('Braking starts across a 180 m spread, and the spread is widest on services recovering from upstream delay.', 'S1', '2026-09-19T04:10:00Z') },
 
-  { id: 'CD-0914', title: 'Off-peak intensity drift, Line 1 A-series',
-    scope: 'Line 1 \u00b7 all segments \u00b7 A-series', gap: 0.29, unit: 'kWh/km', runs: 312, annualMWh: 54,
+  { id: 'CD-0914', title: 'Off-peak intensity drift, NSL A-series',
+    scope: 'NSL \u00b7 all segments \u00b7 A-series', gap: 0.29, unit: 'kWh/km', runs: 312, annualMWh: 54,
     completeness: 93, confidence: 'medium', promotedAt: '2026-09-19T04:10:00Z',
     reading: sys('Intensity has drifted 0.29 kWh/km above baseline over six weeks. No timetable or loading change accounts for it.', 'S1', '2026-09-19T04:10:00Z') },
 
-  { id: 'CD-0915', title: 'Interstation runtime variance, Line 3 southbound',
-    scope: 'Line 3 \u00b7 SEG-322 \u00b7 B-series', gap: 0.38, unit: 'kWh/km', runs: 164, annualMWh: 48,
+  { id: 'CD-0915', title: 'Interstation runtime variance, NEL southbound',
+    scope: 'NEL \u00b7 SEG-322 \u00b7 B-series', gap: 0.38, unit: 'kWh/km', runs: 164, annualMWh: 48,
     completeness: 84, confidence: 'low', promotedAt: '2026-09-19T04:10:00Z',
     reading: sys('Runtime varies by 26 s between the best and median decile, and most of the excess sits in the departure phase.', 'S1', '2026-09-19T04:10:00Z') }
 ];

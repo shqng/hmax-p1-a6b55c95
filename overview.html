@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 <meta name="googlebot" content="noindex, nofollow">
-
 <title>HMAX · Energy overview</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="vendor/tailwind.js"></script>
@@ -129,7 +128,7 @@
         '</div>' +
         reading(
           'Network intensity is ' + em(Math.abs(gapPct).toFixed(1) + '% above baseline') + ' and has widened over ' +
-          'the last four weeks. ' + em(worstLine.id.replace('L', 'Line ')) + ' contributes ' + em(worstShare + '%') +
+          'the last four weeks. ' + em(R.lineOf(worstLine.id).name) + ' contributes ' + em(worstShare + '%') +
           ' of the total gap despite carrying ' + Math.round(worstLine.mwh / T.mwh * 100) + '% of the energy. ' +
           risingLines.length + ' of ' + N.LINES.length + ' lines show a sustained rising trend; the remainder are ' +
           'flat within their comparison band.', 'S5') +
