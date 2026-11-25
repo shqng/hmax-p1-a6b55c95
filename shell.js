@@ -42,7 +42,7 @@ function sidebar(roleId, active) {
 
   role.nav.forEach(function (key) {
     var item = H.NAV[key];
-    if (!item) return;
+    if (!item || item.parent) return;
     var n = item.badge ? badgeCount(item.badge, roleId) : 0;
     var html = '<a href="' + esc(item.href) + '" class="sidebar-link' +
       (key === active ? ' active' : '') + (n > 0 ? ' needs' : '') + '">' +
@@ -425,7 +425,8 @@ function mount(opts) {
 
   var sb = document.getElementById('sidebar');
   var tb = document.getElementById('topbar');
-  if (sb) sb.innerHTML = sidebar(roleId, opts.workspace);
+  var activeNav = H.NAV[opts.workspace];
+  if (sb) sb.innerHTML = sidebar(roleId, activeNav && activeNav.parent ? activeNav.parent : opts.workspace);
   if (tb) tb.innerHTML = topbar(opts, roleId, depth) + handoverStrip(roleId);
 
   var dc = document.getElementById('depthControl');

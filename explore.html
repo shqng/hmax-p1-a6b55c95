@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 <meta name="googlebot" content="noindex, nofollow">
-<title>HMAX · Analysis</title>
+<title>HMAX · Performance explanation</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="vendor/tailwind.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,16 +32,49 @@
   var H = window.HMAX, R = H.render, Q = H.query, C = H.compute, N = H.net, X = H.charts;
   var esc = R.esc, em = X.em;
 
-  var ctx = H.shell.mount({ workspace: 'explore', crumb: 'Monitor', title: 'Analysis' });
+  var ctx = H.shell.mount({ workspace: 'explore', crumb: 'Energy overview', title: 'Performance explanation' });
   if (!ctx) return;
 
   var state = {
-    line: H.shell.param('line', 'L3'),
-    dir: H.shell.param('dir', 'Northbound'),
-    band: H.shell.param('band', 'All'),
+    line: H.shell.param('line', null),
+    dir: H.shell.param('dir', null),
+    band: H.shell.param('band', null),
     view: H.shell.param('view', 'location'),
-    hop: H.shell.param('hop', null)
+    hop: H.shell.param('hop', null),
+    finding: H.shell.param('finding', null)
   };
+
+  if (!state.line && !state.hop && !state.finding) {
+    location.replace('overview.html');
+    return;
+  }
+
+  var finding = null;
+  for (var fi = 0; fi < N.DEVIATIONS.length; fi++) {
+    if (N.DEVIATIONS[fi].id === state.finding) finding = N.DEVIATIONS[fi];
+  }
+  var focusHop = state.hop ? N.hopById(state.hop) :
+    finding && finding.interstationId ? N.hopById(finding.interstationId) : null;
+  state.line = state.line || (finding ? finding.lineId : focusHop ? focusHop.lineId : null);
+  state.dir = state.dir || (finding && finding.direction ? finding.direction : focusHop ? focusHop.direction : 'Both');
+  state.band = state.band || (finding && finding.band ? finding.band : 'All');
+  if (focusHop) state.hop = focusHop.id;
+  if (focusHop && !H.shell.param('view', null)) state.view = 'contrib';
+
+  if ((state.finding && !finding) || (state.hop && !focusHop) || !N.lineById(state.line) ||
+      (finding && finding.lineId !== state.line) ||
+      (focusHop && (focusHop.lineId !== state.line || state.dir !== focusHop.direction)) ||
+      (finding && finding.interstationId && finding.interstationId !== state.hop) ||
+      ['Northbound', 'Southbound', 'Both'].indexOf(state.dir) === -1 ||
+      ['All', 'Peak', 'Off-peak'].indexOf(state.band) === -1 ||
+      ['location', 'pattern', 'time', 'contrib'].indexOf(state.view) === -1) {
+    document.getElementById('main').innerHTML =
+      '<a class="cell-link" href="overview.html">Back to Energy overview</a>' +
+      '<div class="mt-5">' + R.cannotConclude('Explanation unavailable',
+        'The requested location, finding or comparison scope is not available in this prototype.',
+        'Return to Energy overview and select a line or finding.', 'S3') + '</div>';
+    return;
+  }
 
   var VIEWS = [
     { id: 'location', label: 'By location',       hint: 'Where the excess is concentrated' },
@@ -60,19 +93,23 @@
   }
 
   function controls() {
+    if (finding || focusHop) {
+      return '<p class="text-[11.5px] mb-5" style="color:var(--text-secondary)">' +
+        'Supporting charts provide ' + esc(R.lineOf(state.line).name) + ' context' +
+        (state.dir === 'Both' ? ' across both directions' : ' for ' + esc(state.dir.toLowerCase()) + ' services') +
+        (state.band === 'All' ? ' across all service bands' : ' in the ' + esc(state.band.toLowerCase()) + ' band') +
+        '. They are not independent proof of the cause of this finding.</p>';
+    }
     return '<div class="filterbar mb-5">' +
       '<div class="filter-group"><span class="filter-label">Line</span>' +
-        seg('line', N.LINES.map(function (l) {
-          var ln = R.lineOf(l.id);
-          return { v: l.id, label: (ln && ln.name) || l.id };
-        }), state.line) + '</div>' +
+        '<span class="text-[11.5px]">' + esc(R.lineOf(state.line).name) + '</span></div>' +
       '<div class="filter-group"><span class="filter-label">Direction</span>' +
         seg('dir', [{ v: 'Northbound', label: 'NB' }, { v: 'Southbound', label: 'SB' }, { v: 'Both', label: 'Both' }], state.dir) +
       '</div>' +
       '<div class="filter-group"><span class="filter-label">Service band</span>' +
         seg('band', [{ v: 'All', label: 'All' }, { v: 'Peak', label: 'Peak' }, { v: 'Off-peak', label: 'Off-peak' }], state.band) +
       '</div>' +
-      '<a class="filter-reset" href="explore.html">Reset</a>' +
+      '<a class="filter-reset" href="explore.html?line=' + esc(state.line) + '&detail=1">Reset supporting detail</a>' +
     '</div>';
   }
 
@@ -120,6 +157,48 @@
   var over = view.filter(function (h) { return h.deltaPct > 3; });
   var top3 = view.slice().sort(function (a, b) { return b.excessMwh - a.excessMwh; }).slice(0, 3);
   var top3Share = Math.round(top3.reduce(function (a, h) { return a + Math.max(0, h.excessMwh); }, 0) / (excess || 1) * 100);
+
+  function explanation() {
+    var caseId = finding ? finding.caseId : focusHop ? N.caseForHop(focusHop.id) : null;
+    var c = caseId ? Q.caseById(caseId) : null;
+    var measured = finding ? finding.kwhPerKm : focusHop ? focusHop.kwhPerKm : line.kwhPerKm;
+    var baseline = finding ? finding.baseline : focusHop ? focusHop.baseline : line.baseline;
+    var gap = (measured - baseline) / baseline * 100;
+    var title = finding ? finding.scope : focusHop ? focusHop.label : lineName;
+    var scope = finding ? finding.weeks + ' weeks of observed persistence' :
+      focusHop ? focusHop.direction + ' · ' + focusHop.runs + ' runs' : 'All directions · all service bands · 12 weeks';
+    var observation = measured.toFixed(2) + ' kWh/km against a baseline of ' + baseline.toFixed(2) +
+      ' — ' + Math.abs(gap).toFixed(1) + '% ' + (gap > 0 ? 'above' : gap < 0 ? 'below' : 'equal to') + ' baseline.';
+    var interpretation = c && c.hypothesis ? c.hypothesis.v :
+      finding || focusHop
+        ? 'The difference identifies a performance gap, not its cause. Operating conditions and asset-related contributors need to be considered together.'
+        : line.drift === 'rising'
+          ? 'The line-level gap has been widening. Supporting detail can help distinguish a broad pattern from a small number of locations.'
+          : 'The line-level trend is broadly stable. A stable difference may reflect operating conditions or the comparison basis; it does not by itself establish an inefficiency.';
+    var next = c
+      ? 'This finding already has a case. Review its evidence, proposed response and current decision status rather than starting a duplicate investigation.'
+      : finding && finding.state === 'held'
+        ? 'Keep under observation. This finding is held because the evidence is not yet sufficient to distinguish it from normal variation; no change is proposed.'
+        : 'Use the supporting detail to narrow the question before considering an intervention. Above-baseline energy is not the same as achievable savings.';
+
+    return '<div class="panel mb-6">' +
+      '<div class="panel-head"><div><div class="panel-sub">Explaining this performance</div>' +
+        '<h1 class="panel-title mt-1">' + esc(title) + '</h1>' +
+        '<div class="panel-sub">' + esc(scope) + '</div></div></div>' +
+      '<div class="panel-body">' +
+        '<div class="mb-5"><div class="stat-label mb-2">What we observed</div>' +
+          '<p class="text-[15px] font-semibold">' + esc(observation) + '</p></div>' +
+        '<div class="mb-5"><div class="stat-label mb-2">' + (c ? 'Current explanation' : 'What this tells us') + '</div>' +
+          '<p class="text-[13px]" style="color:var(--text-secondary);line-height:1.7">' + esc(interpretation) + '</p>' +
+          (c ? '<p class="text-[11.5px] mt-2" style="color:var(--text-tertiary)">The case records the evidence, confidence and specialist review behind this explanation.</p>' : '') +
+        '</div>' +
+        '<div style="border-top:1px solid var(--border-soft);padding-top:16px">' +
+          '<div class="stat-label mb-2">Next step</div>' +
+          '<p class="text-[13px]" style="color:var(--text-secondary);line-height:1.7">' + esc(next) + '</p>' +
+          (c ? '<a class="btn-primary mt-3" href="case.html?id=' + esc(c.id) + '">Open case ' + esc(c.id) + '</a>' : '') +
+        '</div>' +
+      '</div></div>';
+  }
 
   /* --------------------------------------------------------- summary strip */
 
@@ -169,7 +248,7 @@
           var caseId = N.caseForHop(h.id);
           return '<tr class="' + (caseId ? 'is-cased' : h.deltaPct > 8 ? 'is-flagged' : '') + '">' +
             '<td class="key"><a class="cell-link" href="explore.html?line=' + state.line + '&dir=' +
-              encodeURIComponent(state.dir) + '&view=contrib&hop=' + esc(h.id) + '">' + esc(h.label) + '</a></td>' +
+              encodeURIComponent(h.direction) + '&view=contrib&detail=1&hop=' + esc(h.id) + '">' + esc(h.label) + '</a></td>' +
             '<td class="num mono">' + h.km.toFixed(2) + '</td>' +
             '<td class="num mono muted">' + (h.gradient > 0 ? '+' : '') + h.gradient.toFixed(1) + '%</td>' +
             '<td class="num mono" style="color:var(--text-primary)">' + h.kwhPerKm.toFixed(2) + '</td>' +
@@ -338,6 +417,12 @@
   /* ------------------------------------------------------ view: CONTRIBUTORS */
 
   function viewContrib() {
+    if (finding && !focusHop) {
+      return R.cannotConclude('Finding-specific attribution requires more detail',
+        'This finding is not tied to a single interstation. A line-level correlation cannot explain a fleet or unit-level difference.',
+        finding.caseId ? 'Review the finding-specific evidence in case ' + finding.caseId + '.' :
+          'Review the affected services and assets before attributing a cause.', 'S6');
+    }
     var focus = state.hop ? N.hopById(state.hop) : worst;
     if (!focus) focus = view[0];
 
@@ -478,8 +563,15 @@
   var bodies = { location: viewLocation, pattern: viewPattern, time: viewTime, contrib: viewContrib };
 
   document.getElementById('main').innerHTML =
-    '<p class="lede mb-5">Locate inefficiency by location, operating pattern, period and contributing factor. Selection carries across all four views.</p>' +
-    controls() + summary() + viewTabs() + bodies[state.view]();
+    '<a class="cell-link" href="overview.html#' + (finding ? 'deviations' : 'line-performance') + '">Back to Energy overview</a>' +
+    '<div class="mt-5">' + explanation() + '</div>' +
+    '<details class="panel" id="supporting-analysis"' + (H.shell.param('detail', '') === '1' ? ' open' : '') + '>' +
+      '<summary class="panel-head" style="cursor:pointer;display:list-item;list-style-position:inside">' +
+        '<span class="panel-title">Supporting analysis</span>' +
+        '<span class="panel-sub" style="display:block;margin-top:4px">Optional detail for this line: locations, operating patterns, trends and possible contributors.</span>' +
+      '</summary>' +
+      '<div class="panel-body">' + controls() + summary() + viewTabs() + bodies[state.view]() + '</div>' +
+    '</details>';
 
   /* ---------------------------------------------------------- interaction */
 
@@ -489,7 +581,7 @@
     for (k in changes) if (changes.hasOwnProperty(k)) s[k] = changes[k];
     var q = [];
     for (k in s) if (s.hasOwnProperty(k) && s[k] != null) q.push(k + '=' + encodeURIComponent(s[k]));
-    location.href = 'explore.html?' + q.join('&');
+    location.href = 'explore.html?' + q.join('&') + '&detail=1#supporting-analysis';
   }
 
   var segs = document.querySelectorAll('[data-seg]');

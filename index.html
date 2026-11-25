@@ -63,6 +63,7 @@
     var nav = H.NAV[H.ROLES[k].nav[0]];
     for (var i = 0; i < H.ROLES[k].nav.length; i++) {
       var item = H.NAV[H.ROLES[k].nav[i]];
+      if (!item || item.parent) continue;
       if (item && item.href === H.ROLES[k].home) return item.label;
     }
     return nav ? nav.label : '';

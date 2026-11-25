@@ -96,7 +96,7 @@ var ROLES = {
     colorVar: '--ean',
     color: '#9a3f74',
     soft: 'rgba(154,63,116,.10)',
-    home: 'explore.html',
+    home: 'overview.html',
     nav: ['overview', 'explore', 'runs', 'fleet', 'caseload', 'portfolio'],
     depth: 'L2',
     cadence: 'Daily — the highest-frequency user',
@@ -144,7 +144,7 @@ var ROLES = {
     color: '#14706b',
     soft: 'rgba(20,112,107,.10)',
     home: 'fleet.html',
-    nav: ['fleet', 'runs', 'explore', 'decisions', 'caseload'],
+    nav: ['fleet', 'runs', 'overview', 'explore', 'decisions', 'caseload'],
     depth: 'L3',
     cadence: 'On demand, deep and episodic',
     question: 'Is this my fleet\u2019s problem, and if so which units and how badly?',
@@ -164,7 +164,7 @@ var ROLES = {
    surfaces a user looks at, and the managed work a user acts on. */
 var NAV = {
   overview:  { label: 'Energy overview', href: 'overview.html', icon: 'pulse',   badge: null, group: 'monitor' },
-  explore:   { label: 'Analysis',        href: 'explore.html',  icon: 'chart',   badge: null, group: 'monitor' },
+  explore:   { label: 'Performance explanation', href: 'explore.html', icon: 'chart', badge: null, group: 'monitor', parent: 'overview' },
   runs:      { label: 'Runs',            href: 'runs.html',     icon: 'route',   badge: null, group: 'monitor' },
   fleet:     { label: 'Fleet',           href: 'fleet.html',    icon: 'train',   badge: null, group: 'monitor' },
   caseload:  { label: 'Caseload',   href: 'caseload.html',  icon: 'layers',   badge: 'myCases', group: 'manage' },

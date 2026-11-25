@@ -480,7 +480,7 @@ var DEVIATIONS = [
     interstationId: 'L3-NB-10', kwhPerKm: 3.25, baseline: 2.55, runs: 412, weeks: 6,
     annualMWh: 214, persistence: 'sustained', state: 'case', caseId: 'EC-2043' },
   { id: 'DV-1201', scope: 'NEL \u00b7 Serangoon \u2192 Kovan \u00b7 NB peak', lineId: 'L3',
-    interstationId: 'L3-NB-11', kwhPerKm: 2.96, baseline: 2.62, runs: 398, weeks: 4,
+    interstationId: 'L3-NB-11', band: 'Peak', kwhPerKm: 2.96, baseline: 2.62, runs: 398, weeks: 4,
     annualMWh: 96, persistence: 'sustained', state: 'case', caseId: 'EC-2047' },
   { id: 'DV-1209', scope: 'NEL \u00b7 B-214 and B-227 \u00b7 all services', lineId: 'L3',
     interstationId: null, kwhPerKm: 3.31, baseline: 2.81, runs: 624, weeks: 6,
@@ -489,16 +489,16 @@ var DEVIATIONS = [
     interstationId: 'L2-NB-3', kwhPerKm: 3.02, baseline: 2.79, runs: 288, weeks: 3,
     annualMWh: 41, persistence: 'sustained', state: 'candidate', caseId: null },
   { id: 'DV-1219', scope: 'NSL \u00b7 A-series \u00b7 off-peak southbound', lineId: 'L1',
-    interstationId: null, kwhPerKm: 2.88, baseline: 2.62, runs: 512, weeks: 5,
+    interstationId: null, direction: 'Southbound', band: 'Off-peak', kwhPerKm: 2.88, baseline: 2.62, runs: 512, weeks: 5,
     annualMWh: 63, persistence: 'sustained', state: 'candidate', caseId: null },
   { id: 'DV-1223', scope: 'CCL \u00b7 C-series \u00b7 regenerative recovery', lineId: 'L4',
     interstationId: null, kwhPerKm: 2.51, baseline: 2.44, runs: 740, weeks: 8,
     annualMWh: 52, persistence: 'sustained', state: 'case', caseId: 'EC-2044' },
   { id: 'DV-1228', scope: 'EWL \u00b7 Kallang \u2192 Lavender \u00b7 SB', lineId: 'L2',
-    interstationId: null, kwhPerKm: 2.94, baseline: 2.79, runs: 141, weeks: 2,
+    interstationId: null, direction: 'Southbound', kwhPerKm: 2.94, baseline: 2.79, runs: 141, weeks: 2,
     annualMWh: 18, persistence: 'intermittent', state: 'held', caseId: null },
   { id: 'DV-1231', scope: 'NSL \u00b7 Woodlands \u2192 Admiralty \u00b7 NB', lineId: 'L1',
-    interstationId: null, kwhPerKm: 2.79, baseline: 2.62, runs: 96, weeks: 1,
+    interstationId: null, direction: 'Northbound', kwhPerKm: 2.79, baseline: 2.62, runs: 96, weeks: 1,
     annualMWh: 11, persistence: 'emerging', state: 'held', caseId: null }
 ];
 

@@ -72,6 +72,14 @@
 
   function em(s) { return X.em(s); }
 
+  function explanationLink(d) {
+    var hop = d.interstationId ? N.hopById(d.interstationId) : null;
+    return 'explore.html?line=' + d.lineId + '&finding=' + d.id +
+      '&dir=' + encodeURIComponent(d.direction || (hop ? hop.direction : 'Both')) +
+      '&band=' + encodeURIComponent(d.band || 'All') +
+      (hop ? '&hop=' + hop.id : '');
+  }
+
   /* ------------------------------------------------------------ headline */
 
   var headline =
@@ -117,7 +125,8 @@
       '<div class="panel-head">' +
         '<div><div class="panel-title">Network intensity against baseline</div>' +
         '<div class="panel-sub">Weighted across all lines. Each line is compared against its own matched-run baseline.</div></div>' +
-        '<div class="panel-actions">' + R.sref('S2') + '</div>' +
+        '<div class="panel-actions">' + R.sref('S2') +
+          '<a class="btn-ghost" href="explore.html?line=' + worstLine.id + '&view=time">Explain main contributor</a></div>' +
       '</div>' +
       '<div class="panel-body">' +
         X.series(T.trend, { height: 200, dp: 2 }) +
@@ -141,22 +150,23 @@
     var ln = R.lineOf(l.id);
     return {
       label: (ln && ln.name) || l.id,
-      sub: l.km + ' km · ' + l.stations + ' stations · ' + l.fleets.join(', '),
+      sub: l.km + ' km · ' + l.stations + ' stations · ' + l.fleets.join(', ') +
+        ' · ' + l.openCases + ' open case' + (l.openCases === 1 ? '' : 's'),
       value: l.kwhPerKm, baseline: l.baseline,
-      flag: l.openCases ? l.openCases + ' open case' + (l.openCases > 1 ? 's' : '') : 'no open cases',
+      flag: 'Explain this',
       href: 'explore.html?line=' + l.id,
       tone: l.kwhPerKm > l.baseline * 1.03 ? 'warn' : 'key'
     };
   });
 
   var linePanel =
-    '<div class="panel">' +
+    '<div class="panel" id="line-performance">' +
       '<div class="panel-head">' +
         '<div><div class="panel-title">Intensity by line</div>' +
         '<div class="panel-sub">Each line against its own baseline. Lines are not compared to one another.</div></div>' +
       '</div>' +
       '<div class="panel-body">' + X.rankedBars(lineItems, { dp: 2 }) + '</div>' +
-      '<div class="panel-foot">Select a line to open it in Analysis.</div>' +
+      '<div class="panel-foot">Select a line to see what is driving its performance, with supporting detail available on demand.</div>' +
     '</div>';
 
   var splitPanel =
@@ -214,7 +224,7 @@
   var stateLabel = { 'case': 'Case open', 'candidate': 'Awaiting triage', 'held': 'Held' };
 
   var feed =
-    '<div class="panel mb-6">' +
+    '<div class="panel mb-6" id="deviations">' +
       '<div class="panel-head">' +
         '<div><div class="panel-title">Deviations currently detected</div>' +
         '<div class="panel-sub">' + X.fmtInt(H.HELD_SIGNALS.scanned24h) + ' signals scanned in the last 24 hours. Only deviations that persist, clear the sample threshold and hold a qualifying baseline are listed.</div></div>' +
@@ -224,7 +234,7 @@
         '<table class="dt"><thead><tr>' +
           '<th>Deviation</th><th>Location and scope</th><th class="num">Measured</th>' +
           '<th class="num">Baseline</th><th class="num">Gap</th><th class="num">Runs</th>' +
-          '<th>Persistence</th><th>Status</th>' +
+          '<th>Persistence</th><th>Status</th><th>Explanation</th>' +
         '</tr></thead><tbody>' +
         devs.map(function (d) {
           return '<tr class="' + (d.state === 'case' ? 'is-cased' : d.state === 'candidate' ? 'is-flagged' : '') + '">' +
@@ -241,7 +251,7 @@
                 ? '<button class="raise-link" data-raise="' + esc(d.id) + '">Raise a case</button>'
                 : '<span class="text-[11px]" style="color:var(--text-tertiary)">' +
                     esc(stateLabel[d.state]) + '</span>') +
-            '</td></tr>';
+            '</td><td><a class="cell-link" href="' + esc(explanationLink(d)) + '">Explain this</a></td></tr>';
         }).join('') +
         '</tbody></table>' +
       '</div>' +
