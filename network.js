@@ -494,13 +494,121 @@ var DEVIATIONS = [
   { id: 'DV-1223', scope: 'CCL \u00b7 C-series \u00b7 regenerative recovery', lineId: 'L4',
     interstationId: null, kwhPerKm: 2.51, baseline: 2.44, runs: 740, weeks: 8,
     annualMWh: 52, persistence: 'sustained', state: 'case', caseId: 'EC-2044' },
-  { id: 'DV-1228', scope: 'EWL \u00b7 Kallang \u2192 Lavender \u00b7 SB', lineId: 'L2',
-    interstationId: null, direction: 'Southbound', kwhPerKm: 2.94, baseline: 2.79, runs: 141, weeks: 2,
+  { id: 'DV-1228', scope: 'EWL \u00b7 Kallang \u2192 Lavender \u00b7 NB', lineId: 'L2',
+    interstationId: 'L2-NB-10', kwhPerKm: 2.94, baseline: 2.79, runs: 141, weeks: 2,
     annualMWh: 18, persistence: 'intermittent', state: 'held', caseId: null },
   { id: 'DV-1231', scope: 'NSL \u00b7 Woodlands \u2192 Admiralty \u00b7 NB', lineId: 'L1',
-    interstationId: null, direction: 'Northbound', kwhPerKm: 2.79, baseline: 2.62, runs: 96, weeks: 1,
+    interstationId: 'L1-NB-8', kwhPerKm: 2.79, baseline: 2.62, runs: 96, weeks: 1,
     annualMWh: 11, persistence: 'emerging', state: 'held', caseId: null }
 ];
+
+/* What kind of attention each finding deserves. Deterioration is measured
+   against the location's own history; opportunity against what comparable
+   runs already achieve; unclear means the platform cannot yet tell. */
+var DEVIATION_META = {
+  'DV-1184': { attention: 'deterioration', confidence: 'high',   direction: 'Northbound', since: 'W33',
+               finding: 'Northbound trains between Woodleigh and Serangoon use more energy than expected, and the gap has grown since W33' },
+  'DV-1201': { attention: 'opportunity',   confidence: 'high',   direction: 'Northbound',
+               finding: 'Peak services into Kovan run consistently above what comparable runs achieve' },
+  'DV-1209': { attention: 'deterioration', confidence: 'medium', fleetScope: 'B-series', units: ['B-214', 'B-227'],
+               finding: 'Two B-series trains use noticeably more energy than the rest of the fleet on the same routes' },
+  'DV-1216': { attention: 'opportunity',   confidence: 'medium', direction: 'Northbound',
+               finding: 'Simei to Tanah Merah northbound runs above what comparable runs achieve' },
+  'DV-1219': { attention: 'deterioration', confidence: 'medium', fleetScope: 'A-series',
+               finding: 'Off-peak southbound services on the North South Line have drifted above expected for five weeks' },
+  'DV-1223': { attention: 'unclear',       confidence: 'low',    fleetScope: 'C-series',
+               finding: 'Circle Line trains may be recovering less braking energy than they should',
+               limitedBy: 'The comparison is against the line\u2019s own history, which is a weak baseline' },
+  'DV-1228': { attention: 'unclear',       confidence: 'low',
+               finding: 'Kallang to Lavender northbound is occasionally above expected',
+               limitedBy: 'Intermittent over two weeks; not yet separable from normal variation' },
+  'DV-1231': { attention: 'unclear',       confidence: 'low',
+               finding: 'Woodlands to Admiralty northbound has just started to rise',
+               limitedBy: 'One week of data; too early to tell' }
+};
+DEVIATIONS.forEach(function (d) {
+  var m = DEVIATION_META[d.id], k;
+  if (m) for (k in m) if (m.hasOwnProperty(k) && d[k] == null) d[k] = m[k];
+});
+
+/* ------------------------------------------------------ 8. REFERENCE VALUES
+   What each number is judged against. Four references, each answering a
+   different question:
+     expected    what this scope normally uses in the same conditions
+     achievable  what the best comparable runs already do
+     target      what the organisation has committed to
+     alert       how far above expected before the platform raises it
+   Alerts are recommended from observed variability. A person accepts them;
+   the platform never loosens one on its own.
+   ----------------------------------------------------------------------- */
+
+var REFERENCES = {
+  network: {
+    target: 2.66, targetSource: 'FY26/27 energy plan', targetSetBy: 'Network operations board',
+    achievable: 2.51, alertPct: 3.0, alertSource: 'Network default',
+    recommendedPct: null, variabilityPct: 1.4, confidence: 'medium',
+    confidenceWhy: 'High for three of four lines. Circle Line is compared with its own history only.'
+  },
+  lines: {
+    L3: { target: 2.75, targetSource: 'FY26/27 energy plan', achievable: 2.62,
+          alertPct: 3.0, alertSource: 'Inherited from network', recommendedPct: 2.5, variabilityPct: 1.2,
+          recommendWhy: 'This line varies little week to week. A tighter alert would have flagged the Woodleigh rise two weeks earlier.',
+          preview: [ { pct: 2.0, alerts: 9, cases: 3 }, { pct: 2.5, alerts: 5, cases: 3 }, { pct: 3.0, alerts: 4, cases: 2 }, { pct: 4.5, alerts: 2, cases: 1 } ],
+          confidence: 'high', confidenceWhy: 'Strong matched-run baseline and complete movement data.' },
+    L2: { target: 2.74, targetSource: 'FY26/27 energy plan', achievable: 2.60,
+          alertPct: 3.0, alertSource: 'Inherited from network', recommendedPct: 4.0, variabilityPct: 2.1,
+          recommendWhy: 'Mixed A- and B-series running makes this line noisier. At 3% most alerts last quarter cleared without action.',
+          preview: [ { pct: 2.0, alerts: 14, cases: 1 }, { pct: 3.0, alerts: 7, cases: 1 }, { pct: 4.0, alerts: 3, cases: 1 }, { pct: 5.0, alerts: 1, cases: 0 } ],
+          confidence: 'medium', confidenceWhy: 'Baseline mixes two fleets, so comparisons are less precise.' },
+    L1: { target: 2.57, targetSource: 'FY26/27 energy plan', achievable: 2.45,
+          alertPct: 3.0, alertSource: 'Inherited from network', recommendedPct: null, variabilityPct: 1.5,
+          recommendWhy: 'The current alert level suits this line\u2019s variability. No change recommended.',
+          preview: [ { pct: 2.0, alerts: 8, cases: 2 }, { pct: 3.0, alerts: 4, cases: 2 }, { pct: 4.0, alerts: 2, cases: 1 } ],
+          confidence: 'high', confidenceWhy: 'Strong matched-run baseline and complete movement data.' },
+    L4: { target: 2.40, targetSource: 'FY26/27 energy plan', achievable: null,
+          alertPct: 3.0, alertSource: 'Inherited from network', recommendedPct: null, variabilityPct: 3.4,
+          recommendWhy: 'Not recommended yet. The line is only compared with its own history, so an alert level set now would be unreliable. Improve the baseline first.',
+          preview: [ { pct: 3.0, alerts: 6, cases: 0 }, { pct: 5.0, alerts: 2, cases: 0 } ],
+          confidence: 'low', confidenceWhy: 'Compared with its own history only, and substation metering was missing for one week.' }
+  },
+  /* Sections inherit the line target but vary more, so they carry a wider
+     recommended alert than the line they sit on. */
+  section: { alertPct: 3.0, alertSource: 'Inherited from line', recommendedPct: 4.5, variabilityPct: 2.6,
+             recommendWhy: 'Individual sections vary more than whole lines. A wider alert keeps section findings to ones that persist.' },
+  fleets: {
+    'A-series': { alertIndex: 108, alertSource: 'Fleet default', recommendedIndex: null,
+                  recommendWhy: 'Spread across the fleet is typical. No change recommended.' },
+    'B-series': { alertIndex: 108, alertSource: 'Fleet default', recommendedIndex: 106,
+                  recommendWhy: 'The newest fleet has the tightest spread, so a lower trigger catches unit drift sooner.' },
+    'C-series': { alertIndex: 108, alertSource: 'Fleet default', recommendedIndex: 112,
+                  recommendWhy: 'An older fleet without regenerative braking has a wider natural spread. At 108 most alerts were not unit faults.' }
+  },
+  /* The achievable reference is the best comparable runs, one step stricter
+     than expected. Below this ratio of expected is treated as achievable. */
+  achievableRatio: 0.94
+};
+
+/* Things that happened, drawn on every trend that covers them, so a change
+   in the line can be read against what changed in the railway. */
+var EVENTS = [
+  { id: 'EV-31', i: 4, week: 'W31', lineId: null,  kind: 'change',       label: 'Timetable change' },
+  { id: 'EV-33', i: 6, week: 'W33', lineId: 'L3',  kind: 'changepoint',  label: 'Gap starts to grow', hopId: 'L3-NB-10' },
+  { id: 'EV-34', i: 7, week: 'W34', lineId: 'L4',  kind: 'gap',          label: 'Metering gap' },
+  { id: 'EV-35', i: 8, week: 'W35', lineId: 'L2',  kind: 'intervention', label: 'EC-2036 change released' },
+  { id: 'EV-36', i: 9, week: 'W36', lineId: 'L1',  kind: 'disruption',   label: 'Track works' }
+];
+
+/* Weeks for which a source was missing, per line. The trend shows a gap
+   rather than an interpolated value. */
+var DATA_GAPS = { L4: [7] };
+
+/* Coverage of the inputs per line, in percent of runs. */
+var COVERAGE = {
+  L3: { movement: 99, metering: 96, timetable: 100, fleet: 92 },
+  L2: { movement: 98, metering: 95, timetable: 100, fleet: 87 },
+  L1: { movement: 99, metering: 97, timetable: 100, fleet: 90 },
+  L4: { movement: 96, metering: 86, timetable: 100, fleet: 81 }
+};
 
 /* ---------------------------------------------------------------- QUERIES */
 
@@ -607,6 +715,17 @@ function contextFor(scope) {
   return out;
 }
 
+/* Events that belong on a trend at a given scope: network-wide ones always,
+   line ones on that line, and section change points only on that section. */
+function eventsFor(lineId, hopId) {
+  return EVENTS.filter(function (e) {
+    if (!e.lineId) return true;
+    if (!lineId || e.lineId !== lineId) return false;
+    if (e.hopId && hopId && e.hopId !== hopId) return false;
+    return true;
+  });
+}
+
 /* ---------------------------------------------------------------- EXPORT */
 
 H.net = {
@@ -616,6 +735,8 @@ H.net = {
   FLEET_SPEC: FLEET_SPEC, UNITS: UNITS,
   INTERSTATIONS: INTERSTATIONS, RUNS: RUNS, DISTRIBUTIONS: DISTRIBUTIONS,
   DEVIATIONS: DEVIATIONS,
+  REFERENCES: REFERENCES, EVENTS: EVENTS, DATA_GAPS: DATA_GAPS, COVERAGE: COVERAGE,
+  eventsFor: eventsFor,
   lineById: lineById, unitById: unitById, runById: runById, hopById: hopById,
   hopsFor: hopsFor, worstHops: worstHops, unitsFor: unitsFor, runsFor: runsFor,
   fleetSummary: fleetSummary, deviationsFor: deviationsFor, caseForHop: caseForHop,

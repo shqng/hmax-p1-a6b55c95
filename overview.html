@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 <meta name="googlebot" content="noindex, nofollow">
-<title>HMAX · Energy overview</title>
+<title>HMAX · Energy performance</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="vendor/tailwind.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -28,282 +28,1255 @@
 <script src="shell.js"></script>
 <script src="raise.js"></script>
 <script>
+/* Energy performance: one dashboard, scoped from the network down to a
+   single section or finding. Overview first; the scope bar narrows it. */
 (function () {
-  var H = window.HMAX, R = H.render, Q = H.query, C = H.compute, N = H.net, X = H.charts;
-  var esc = R.esc;
+var H = window.HMAX, R = H.render, Q = H.query, N = H.net, X = H.charts, esc = R.esc;
+var ctx = H.shell.mount({ workspace: 'overview', crumb: 'Monitor', title: 'Energy performance' });
+if (!ctx) return;
+var main = document.getElementById('main');
 
-  var ctx = H.shell.mount({ workspace: 'overview', crumb: 'Monitor', title: 'Energy overview' });
-  if (!ctx) return;
+/* ------------------------------------------------------------ constants */
+var T = N.TOTAL, REF = N.REFERENCES, FS = N.FLEET_SPEC, WL = N.WEEK_LABELS;
+var SHORT = { L1: 'NSL', L2: 'EWL', L3: 'NEL', L4: 'CCL' };
+var LINE_ORDER = ['L1', 'L2', 'L3', 'L4'];
+var DIRS = ['Both', 'Northbound', 'Southbound'];
+var BANDS = ['All', 'Peak', 'Off-peak'];
+var FLEETS = ['All', 'A-series', 'B-series', 'C-series'];
+var COMPARES = ['expected', 'achievable', 'target'];
+var COMPARE_LABEL = { expected: 'Expected', achievable: 'Achievable', target: 'Target' };
+var COMPARE_TEXT = { expected: 'expected', achievable: 'the achievable level', target: 'its target' };
+var PERIODS = [{ id: 'p28', label: '28 days' }, { id: 'p12w', label: '12 weeks' }, { id: 'p6m', label: '6 months' }];
+var BF = { All: { v: 1, e: 1, r: 1 }, Peak: { v: 1.08, e: 1.068, r: 0.38 }, 'Off-peak': { v: 0.958, e: 0.96, r: 0.62 } };
+var BF_LINE = { L1: { 'Off-peak': { v: 0.975, e: 0.96, r: 0.62 } }, L3: { Peak: { v: 1.09, e: 1.068, r: 0.38 } } };
+var CW = { high: 1, medium: 0.7, low: 0.4 };
+var ATT = {
+  deterioration: { cls: 'det', label: 'Getting worse', rank: 0 },
+  opportunity:   { cls: 'opp', label: 'Opportunity', rank: 1 },
+  unclear:       { cls: 'unc', label: 'Can\u2019t tell yet', rank: 2 },
+  target:        { cls: 'tgt', label: 'Target at risk', rank: 1 },
+  outcome:       { cls: 'out', label: 'Outcome check', rank: 3 }
+};
+var PREF = { rse: ['trains'], opm: ['hour', 'where'] };
+var K_HOP = 214 / (0.70 * 2.40 * 412);
+var SEP = ' \u00b7 ';
 
-  var state = { period: 'p12w' };
-
-  var T = N.TOTAL;
-  var gapPct = (T.kwhPerKm - T.baseline) / T.baseline * 100;
-  var excessMwh = Math.round(T.mwh * (gapPct / 100) / (1 + gapPct / 100));
-  var excessCost = excessMwh * T.costPerMwh;
-
-  var linesRanked = N.LINES.slice().sort(function (a, b) {
-    return (b.kwhPerKm - b.baseline) * b.mwh - (a.kwhPerKm - a.baseline) * a.mwh;
+/* -------------------------------------------------------------- helpers */
+function has(o, k) { return o != null && Object.prototype.hasOwnProperty.call(o, k); }
+function inArr(a, v) { return a.indexOf(v) > -1; }
+function P(name, fb) {
+  var v = H.shell.param(name, '');
+  if (v == null || v === '') return fb;
+  return String(v).replace(/\+/g, ' ');
+}
+function enc(s) { return encodeURIComponent(s); }
+function can(ws) { return ctx.role.nav.indexOf(ws) > -1; }
+function fmt(n, dp) { return X.fmt(n, dp == null ? 2 : dp); }
+function pct(v, ref) { return (v - ref) / ref * 100; }
+function signed(n, dp) {
+  var r = Number(Math.abs(n).toFixed(dp == null ? 1 : dp));
+  return (r === 0 ? '' : n > 0 ? '+' : '\u2212') + X.fmt(r, dp == null ? 1 : dp);
+}
+function lower(s) { return String(s).toLowerCase(); }
+function lineName(id) { var l = R.lineOf(id); return l ? l.name : id; }
+function mwhTxt(m) { return X.fmtInt(Math.round(m)) + ' MWh'; }
+function gbp(m) { return R.money(Math.round(m * T.costPerMwh), T.currency); }
+function mean(a, f) {
+  if (!a.length) return null;
+  var s = 0;
+  a.forEach(function (x) { s += f(x); });
+  return s / a.length;
+}
+function median(a) {
+  if (!a.length) return 0;
+  var b = a.slice().sort(function (x, y) { return x - y; });
+  var m = Math.floor(b.length / 2);
+  return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2;
+}
+function stdev(a) {
+  if (a.length < 2) return 0;
+  var m = mean(a, function (x) { return x; }), s = 0;
+  a.forEach(function (x) { s += (x - m) * (x - m); });
+  return Math.sqrt(s / (a.length - 1));
+}
+function bfFor(lineId, band) {
+  if (lineId && BF_LINE[lineId] && BF_LINE[lineId][band]) return BF_LINE[lineId][band];
+  return BF[band] || BF.All;
+}
+function periodById(id) {
+  var i;
+  for (i = 0; i < PERIODS.length; i++) if (PERIODS[i].id === id) return PERIODS[i];
+  return null;
+}
+function devById(id) {
+  var i;
+  for (i = 0; i < N.DEVIATIONS.length; i++) if (N.DEVIATIONS[i].id === id) return N.DEVIATIONS[i];
+  return null;
+}
+function lineRunsFleet(lineId, fleet) {
+  var l = N.lineById(lineId);
+  return !!l && (fleet === 'All' || inArr(l.fleets, fleet));
+}
+function placeOf(d) {
+  var p = String(d.scope || '').split(SEP);
+  return p.length > 1 ? p[1] : (d.scope || '');
+}
+function trainRelated(d) {
+  return !d.interstationId && !d.direction && !d.band && !!(d.units || d.fleetScope);
+}
+function severest(keys) {
+  var best = null;
+  keys.forEach(function (k) {
+    if (k && ATT[k] && (best == null || ATT[k].rank < ATT[best].rank)) best = k;
   });
-  var worstLine = linesRanked[0];
-  var worstShare = Math.round(
-    (worstLine.kwhPerKm - worstLine.baseline) * worstLine.mwh /
-    N.LINES.reduce(function (a, l) { return a + Math.max(0, (l.kwhPerKm - l.baseline) * l.mwh); }, 0) * 100);
+  return best;
+}
+function sortDevs(list) {
+  return list.map(function (d, i) { return { d: d, i: i }; }).sort(function (a, b) {
+    var wa = a.d.annualMWh * (CW[a.d.confidence] || 0.4), wb = b.d.annualMWh * (CW[b.d.confidence] || 0.4);
+    return wb - wa || a.i - b.i;
+  }).map(function (x) { return x.d; });
+}
 
-  var lineColour = { L1: 'var(--blue)', L2: 'var(--purple)', L3: 'var(--amber)', L4: 'var(--green)' };
+/* ----------------------------------------------------- scope from the URL */
+var st = {
+  line: P('line', null), dir: P('dir', 'Both'), band: P('band', 'All'), fleet: P('fleet', 'All'),
+  hop: P('hop', null), finding: P('finding', null), compare: P('compare', 'expected'), period: P('period', 'p12w')
+};
+var focus = null, hop = null, L = null, err = null;
 
-  /* ------------------------------------------------------------ helpers */
+if (!inArr(DIRS, st.dir)) err = 'The direction \u201c' + st.dir + '\u201d is not recognised.';
+else if (!inArr(BANDS, st.band)) err = 'The service band \u201c' + st.band + '\u201d is not recognised.';
+else if (!inArr(FLEETS, st.fleet)) err = 'The fleet \u201c' + st.fleet + '\u201d is not recognised.';
+else if (!inArr(COMPARES, st.compare)) err = 'The comparison \u201c' + st.compare + '\u201d is not recognised.';
+else if (!periodById(st.period)) err = 'The period \u201c' + st.period + '\u201d is not recognised.';
 
-  function periodBar() {
-    return '<div class="filterbar mb-6">' +
-      '<div class="filter-group"><span class="filter-label">Period</span>' +
-        '<span class="seg" id="periodSeg">' + N.PERIODS.map(function (p) {
-          return '<button data-p="' + p.id + '"' + (p.id === state.period ? ' class="on"' : '') + '>' +
-            esc(p.label) + '</button>';
-        }).join('') + '</span></div>' +
-      '<div class="filter-group"><span class="filter-label">Scope</span>' +
-        '<span class="text-[11.5px]" style="color:var(--text-secondary)">Whole network · all fleets · all services</span></div>' +
-      '<div class="filter-reset mono text-[10.5px]">' +
-        'to ' + esc(N.PERIODS.filter(function (p) { return p.id === state.period; })[0].to) + '</div>' +
-    '</div>';
-  }
-
-  function reading(text, service) { return X.note(text, service); }
-
-  function em(s) { return X.em(s); }
-
-  function explanationLink(d) {
-    var hop = d.interstationId ? N.hopById(d.interstationId) : null;
-    return 'explore.html?line=' + d.lineId + '&finding=' + d.id +
-      '&dir=' + encodeURIComponent(d.direction || (hop ? hop.direction : 'Both')) +
-      '&band=' + encodeURIComponent(d.band || 'All') +
-      (hop ? '&hop=' + hop.id : '');
-  }
-
-  /* ------------------------------------------------------------ headline */
-
-  var headline =
-    '<div class="metric-strip grid grid-cols-5 mb-6">' +
-      '<div class="metric">' +
-        '<div class="metric-label">Network intensity</div>' +
-        '<div class="metric-value">' + T.kwhPerKm.toFixed(2) + '<span class="metric-unit">kWh/km</span></div>' +
-        X.gauge(T.kwhPerKm, T.baseline) +
-        '<div class="metric-sub">' + X.delta(T.kwhPerKm, T.baseline) +
-          ' against baseline ' + T.baseline.toFixed(2) + '</div>' +
-      '</div>' +
-      '<div class="metric">' +
-        '<div class="metric-label">Energy consumed</div>' +
-        '<div class="metric-value">' + X.fmtInt(T.mwh) + '<span class="metric-unit">MWh</span></div>' +
-        '<div class="metric-sub">Over ' + X.fmtInt(T.km / 1000) + ' thousand train-km, ' +
-          X.fmtInt(T.runs) + ' runs</div>' +
-      '</div>' +
-      '<div class="metric">' +
-        '<div class="metric-label">Regenerated</div>' +
-        '<div class="metric-value">' + X.fmtInt(T.mwhRecovered) + '<span class="metric-unit">MWh</span></div>' +
-        '<div class="metric-sub">' + T.regenPct.toFixed(1) + '% recovery, net of substation acceptance</div>' +
-      '</div>' +
-      '<div class="metric">' +
-        '<div class="metric-label">Excess against baseline</div>' +
-        '<div class="metric-value" style="color:var(--amber)">' + X.fmtInt(excessMwh) +
-          '<span class="metric-unit">MWh</span></div>' +
-        '<div class="metric-sub">Approximately ' + R.money(excessCost) + ' at ' +
-          T.currency + T.costPerMwh + '/MWh</div>' +
-      '</div>' +
-      '<div class="metric">' +
-        '<div class="metric-label">Under management</div>' +
-        '<div class="metric-value">' + Q.openCases().length + '<span class="metric-unit">open cases</span></div>' +
-        '<div class="metric-sub">' + N.deviationsFor({ state: 'candidate' }).length +
-          ' deviations above the promotion threshold</div>' +
-      '</div>' +
-    '</div>';
-
-  /* -------------------------------------------------------------- trend */
-
-  var risingLines = N.LINES.filter(function (l) { return l.drift === 'rising'; });
-  var trendPanel =
-    '<div class="panel mb-6">' +
-      '<div class="panel-head">' +
-        '<div><div class="panel-title">Network intensity against baseline</div>' +
-        '<div class="panel-sub">Weighted across all lines. Each line is compared against its own matched-run baseline.</div></div>' +
-        '<div class="panel-actions">' + R.sref('S2') +
-          '<a class="btn-ghost" href="explore.html?line=' + worstLine.id + '&view=time">Explain main contributor</a></div>' +
-      '</div>' +
-      '<div class="panel-body">' +
-        X.series(T.trend, { height: 200, dp: 2 }) +
-        '<div class="chart-legend">' +
-          '<span class="cl-item"><span class="cl-swatch" style="background:var(--accent)"></span>Measured intensity</span>' +
-          '<span class="cl-item"><span class="cl-swatch dash"></span>Matched-run baseline</span>' +
-          '<span class="cl-item"><span class="cl-swatch area" style="background:rgba(245,185,92,.13)"></span>Excess</span>' +
-        '</div>' +
-        reading(
-          'Network intensity is ' + em(Math.abs(gapPct).toFixed(1) + '% above baseline') + ' and has widened over ' +
-          'the last four weeks. ' + em(R.lineOf(worstLine.id).name) + ' contributes ' + em(worstShare + '%') +
-          ' of the total gap despite carrying ' + Math.round(worstLine.mwh / T.mwh * 100) + '% of the energy. ' +
-          risingLines.length + ' of ' + N.LINES.length + ' lines show a sustained rising trend; the remainder are ' +
-          'flat within their comparison band.', 'S5') +
-      '</div>' +
-    '</div>';
-
-  /* ------------------------------------------------------- lines + split */
-
-  var lineItems = linesRanked.map(function (l) {
-    var ln = R.lineOf(l.id);
-    return {
-      label: (ln && ln.name) || l.id,
-      sub: l.km + ' km · ' + l.stations + ' stations · ' + l.fleets.join(', ') +
-        ' · ' + l.openCases + ' open case' + (l.openCases === 1 ? '' : 's'),
-      value: l.kwhPerKm, baseline: l.baseline,
-      flag: 'Explain this',
-      href: 'explore.html?line=' + l.id,
-      tone: l.kwhPerKm > l.baseline * 1.03 ? 'warn' : 'key'
+if (!err && st.finding) {
+  focus = devById(st.finding);
+  if (!focus) err = 'Finding ' + st.finding + ' does not exist.';
+  else {
+    var fh = focus.interstationId ? N.hopById(focus.interstationId) : null;
+    var dv = {
+      line: focus.lineId, hop: focus.interstationId || null,
+      dir: focus.direction || (fh ? fh.direction : 'Both'),
+      band: focus.band || 'All', fleet: focus.fleetScope || 'All'
     };
-  });
+    if (st.line && st.line !== dv.line) err = 'Finding ' + focus.id + ' is on the ' + lineName(dv.line) + ', not the ' + lineName(st.line) + '.';
+    else if (st.hop && st.hop !== dv.hop) err = 'Finding ' + focus.id + ' is not about section ' + st.hop + '.';
+    else if (st.dir !== 'Both' && st.dir !== dv.dir) err = 'Finding ' + focus.id + ' is not about ' + lower(st.dir) + ' services.';
+    else if (st.band !== 'All' && st.band !== dv.band) err = 'Finding ' + focus.id + ' is not about the ' + lower(st.band) + ' band.';
+    else if (st.fleet !== 'All' && st.fleet !== dv.fleet) err = 'Finding ' + focus.id + ' is not about the ' + st.fleet + '.';
+    else { st.line = dv.line; st.hop = dv.hop; st.dir = dv.dir; st.band = dv.band; st.fleet = dv.fleet; }
+  }
+}
+if (!err && st.hop) {
+  hop = N.hopById(st.hop);
+  if (!hop) err = 'Section ' + st.hop + ' does not exist.';
+  else if (st.line && st.line !== hop.lineId) err = 'Section ' + hop.id + ' is on the ' + lineName(hop.lineId) + ', not the ' + lineName(st.line) + '.';
+  else if (st.dir !== 'Both' && st.dir !== hop.direction) err = 'Section ' + hop.id + ' only carries ' + lower(hop.direction) + ' services.';
+  else { st.line = hop.lineId; st.dir = hop.direction; }
+}
+if (!err && st.line) {
+  L = N.lineById(st.line);
+  if (!L) err = 'Line ' + st.line + ' does not exist.';
+}
+if (!err && st.dir !== 'Both' && !L) err = 'A direction only applies once a line is chosen.';
+if (!err && st.fleet !== 'All') {
+  if (!has(FS, st.fleet)) err = 'The fleet \u201c' + st.fleet + '\u201d is not recognised.';
+  else if (L && !inArr(L.fleets, st.fleet)) err = 'The ' + st.fleet + ' does not run on the ' + lineName(L.id) + '.';
+}
 
-  var linePanel =
-    '<div class="panel" id="line-performance">' +
-      '<div class="panel-head">' +
-        '<div><div class="panel-title">Intensity by line</div>' +
-        '<div class="panel-sub">Each line against its own baseline. Lines are not compared to one another.</div></div>' +
-      '</div>' +
-      '<div class="panel-body">' + X.rankedBars(lineItems, { dp: 2 }) + '</div>' +
-      '<div class="panel-foot">Select a line to see what is driving its performance, with supporting detail available on demand.</div>' +
-    '</div>';
+if (err) {
+  main.innerHTML = R.cannotConclude('Scope unavailable', err,
+      'Return to the network view and choose a line, section or finding from there.') +
+    '<p class="mt-4"><a class="cell-link" href="overview.html">Back to the network view</a></p>';
+  return;
+}
 
-  var splitPanel =
-    '<div class="panel">' +
-      '<div class="panel-head">' +
-        '<div><div class="panel-title">Where the energy goes</div>' +
-        '<div class="panel-sub">Traction is the addressable component in Phase 1. Auxiliary load is shown for completeness.</div></div>' +
-      '</div>' +
-      '<div class="panel-body">' + X.stack(N.ENERGY_SPLIT, { unit: 'MWh' }) +
-        reading('Traction is ' +
-          em(Math.round(N.ENERGY_SPLIT[0].mwh / (N.ENERGY_SPLIT[0].mwh + N.ENERGY_SPLIT[1].mwh + N.ENERGY_SPLIT[2].mwh) * 100) + '%') +
-          ' of consumption and is the only component this phase can act on. Regeneration currently returns ' +
-          em(T.regenPct.toFixed(1) + '%') + ', which is below the design figure for two of three fleets.', 'S5') +
-      '</div>' +
-    '</div>';
+var level = focus ? 'finding' : hop ? 'section' : L ? 'line' : 'network';
+var chartLevel = hop ? 'section' : L ? 'line' : 'network';
 
-  /* ------------------------------------------------------- time of day */
-
-  var hourItems = N.HOURLY.map(function (h) {
-    return {
-      label: h.hour % 3 === 0 ? h.label.slice(0, 2) : '',
-      value: h.kwhPerKm, baseline: h.baseline,
-      tone: h.band === 'Peak' ? 'warn' : h.band === 'Late' ? 'tertiary' : 'key'
-    };
-  });
-  var peakAvg = 0, offAvg = 0, pn = 0, on = 0;
-  N.HOURLY.forEach(function (h) {
-    if (h.band === 'Peak') { peakAvg += h.kwhPerKm; pn++; } else if (h.band === 'Off-peak') { offAvg += h.kwhPerKm; on++; }
-  });
-  peakAvg /= pn; offAvg /= on;
-
-  var hourPanel =
-    '<div class="panel mb-6">' +
-      '<div class="panel-head">' +
-        '<div><div class="panel-title">Intensity by hour of day</div>' +
-        '<div class="panel-sub">Separates whole-day conditions from peak-only ones.</div></div>' +
-      '</div>' +
-      '<div class="panel-body">' +
-        X.columns(hourItems, { height: 180, zero: false, dp: 2 }) +
-        '<div class="chart-legend">' +
-          '<span class="cl-item"><span class="cl-swatch area" style="background:var(--amber)"></span>Peak</span>' +
-          '<span class="cl-item"><span class="cl-swatch area" style="background:var(--accent)"></span>Off-peak</span>' +
-          '<span class="cl-item"><span class="cl-swatch dash"></span>Baseline for the hour</span>' +
-        '</div>' +
-        reading('Peak hours run ' + em(((peakAvg - offAvg) / offAvg * 100).toFixed(1) + '% higher') +
-          ' than off-peak, which is expected from loading and headway. The off-peak band is nonetheless ' +
-          em('above its own baseline') + ' — a condition that loading does not explain and that is therefore ' +
-          'the more promising place to look.', 'S5') +
-      '</div>' +
-    '</div>';
-
-  /* ------------------------------------------------------ deviation feed */
-
-  var devs = N.DEVIATIONS.slice().sort(function (a, b) { return b.annualMWh - a.annualMWh; });
-  var stateLabel = { 'case': 'Case open', 'candidate': 'Awaiting triage', 'held': 'Held' };
-
-  var feed =
-    '<div class="panel mb-6" id="deviations">' +
-      '<div class="panel-head">' +
-        '<div><div class="panel-title">Deviations currently detected</div>' +
-        '<div class="panel-sub">' + X.fmtInt(H.HELD_SIGNALS.scanned24h) + ' signals scanned in the last 24 hours. Only deviations that persist, clear the sample threshold and hold a qualifying baseline are listed.</div></div>' +
-        '<div class="panel-actions">' + R.sref('S1') + '</div>' +
-      '</div>' +
-      '<div class="panel-body flush">' +
-        '<table class="dt"><thead><tr>' +
-          '<th>Deviation</th><th>Location and scope</th><th class="num">Measured</th>' +
-          '<th class="num">Baseline</th><th class="num">Gap</th><th class="num">Runs</th>' +
-          '<th>Persistence</th><th>Status</th><th>Explanation</th>' +
-        '</tr></thead><tbody>' +
-        devs.map(function (d) {
-          return '<tr class="' + (d.state === 'case' ? 'is-cased' : d.state === 'candidate' ? 'is-flagged' : '') + '">' +
-            '<td class="mono" style="color:var(--text-tertiary)">' + esc(d.id) + '</td>' +
-            '<td class="key">' + esc(d.scope) + '</td>' +
-            '<td class="num mono">' + d.kwhPerKm.toFixed(2) + '</td>' +
-            '<td class="num mono muted">' + d.baseline.toFixed(2) + '</td>' +
-            '<td class="num">' + X.delta(d.kwhPerKm, d.baseline) + '</td>' +
-            '<td class="num mono">' + d.runs + '</td>' +
-            '<td>' + esc(d.persistence) + ' · ' + d.weeks + 'w</td>' +
-            '<td>' + (d.caseId
-              ? '<a class="case-link" href="case.html?id=' + esc(d.caseId) + '">' + esc(d.caseId) + '</a>'
-              : d.state === 'candidate'
-                ? '<button class="raise-link" data-raise="' + esc(d.id) + '">Raise a case</button>'
-                : '<span class="text-[11px]" style="color:var(--text-tertiary)">' +
-                    esc(stateLabel[d.state]) + '</span>') +
-            '</td><td><a class="cell-link" href="' + esc(explanationLink(d)) + '">Explain this</a></td></tr>';
-        }).join('') +
-        '</tbody></table>' +
-      '</div>' +
-      '<div class="raise-bar">' +
-        '<div class="raise-what">' +
-          N.deviationsFor({ state: 'candidate' }).length + ' deviations meet the promotion threshold but have ' +
-          'no owner. ' + N.deviationsFor({ state: 'held' }).length + ' are held below it — too recent or too few runs to ' +
-          'distinguish from normal variation.</div>' +
-        '<a class="btn-primary" style="margin-left:auto" href="portfolio.html#candidates">Triage candidates</a>' +
-      '</div>' +
-    '</div>';
-
-  /* ----------------------------------------------------------- assemble */
-
-  document.getElementById('main').innerHTML =
-    '<p class="lede mb-6">Network traction energy against baseline, and the deviations currently under management.</p>' +
-            '' +
-    periodBar() +
-    headline +
-    trendPanel +
-    '<div class="grid grid-cols-2 gap-5 mb-6">' + linePanel + splitPanel + '</div>' +
-    hourPanel +
-    feed;
-
-  /* Period control. The data set is fixed in the prototype, so changing the
-     period re-frames the header rather than pretending to refetch. */
-  var seg = document.getElementById('periodSeg');
-  if (seg) {
-    var bs = seg.getElementsByTagName('button');
-    for (var i = 0; i < bs.length; i++) {
-      (function (b) {
-        b.addEventListener('click', function () {
-          for (var j = 0; j < bs.length; j++) bs[j].className = '';
-          b.className = 'on';
-        });
-      })(bs[i]);
+/* Every control builds its link from the current scope plus one change, so
+   narrowing never loses the comparison or the period the user picked. */
+function url(ch) {
+  var s = { line: st.line, dir: st.dir, band: st.band, fleet: st.fleet, hop: st.hop,
+            finding: st.finding, compare: st.compare, period: st.period };
+  if (has(ch, 'line')) {
+    s.line = ch.line; s.hop = null; s.finding = null; s.dir = 'Both';
+    if (s.line && s.fleet !== 'All' && !lineRunsFleet(s.line, s.fleet)) s.fleet = 'All';
+  }
+  if (has(ch, 'dir')) { s.dir = ch.dir; s.hop = null; s.finding = null; }
+  if (has(ch, 'band')) { s.band = ch.band; s.finding = null; }
+  if (has(ch, 'fleet')) { s.fleet = ch.fleet; s.finding = null; }
+  if (has(ch, 'hop')) {
+    s.hop = ch.hop; s.finding = null;
+    if (ch.hop) { var h = N.hopById(ch.hop); if (h) { s.line = h.lineId; s.dir = h.direction; } }
+  }
+  if (has(ch, 'finding')) s.finding = ch.finding;
+  if (has(ch, 'compare')) s.compare = ch.compare;
+  if (has(ch, 'period')) s.period = ch.period;
+  var q = [];
+  if (s.finding) q.push('finding=' + enc(s.finding));
+  else {
+    if (s.hop) q.push('hop=' + enc(s.hop));
+    else if (s.line) {
+      q.push('line=' + enc(s.line));
+      if (s.dir !== 'Both') q.push('dir=' + enc(s.dir));
     }
+    if (s.band !== 'All') q.push('band=' + enc(s.band));
+    if (s.fleet !== 'All') q.push('fleet=' + enc(s.fleet));
   }
-  /* Promotion bridge. A deviation with no owner can be raised into a managed
-     case directly from the feed, carrying its baseline and scope with it. */
-  var raisers = document.querySelectorAll('[data-raise]');
-  for (var r = 0; r < raisers.length; r++) {
-    (function (b) {
-      b.addEventListener('click', function () {
-        var id = b.getAttribute('data-raise'), d = null;
-        for (var j = 0; j < N.DEVIATIONS.length; j++) {
-          if (N.DEVIATIONS[j].id === id) d = N.DEVIATIONS[j];
-        }
-        if (d) H.raise.open(d);
-      });
-    })(raisers[r]);
+  if (s.compare !== 'expected') q.push('compare=' + enc(s.compare));
+  if (s.period !== 'p12w') q.push('period=' + enc(s.period));
+  return 'overview.html' + (q.length ? '?' + q.join('&') : '');
+}
+function href(ch) { return esc(url(ch)); }
+
+/* ----------------------------------------------------------- scope maths */
+function unitsOn(lineId, fleet) {
+  return N.UNITS.filter(function (u) {
+    return (!lineId || u.line === lineId) && (!fleet || fleet === 'All' || u.fleet === fleet);
+  });
+}
+function fleetRatio(lineId, fleet) {
+  var one = { v: 1, e: 1, share: 1, regen: null };
+  if (!fleet || fleet === 'All') return one;
+  var all = unitsOn(lineId, 'All'), fu = unitsOn(lineId, fleet);
+  if (!all.length || !fu.length) return one;
+  function kw(u) { return u.kwhPerKm; }
+  function bl(u) { return u.baseline; }
+  return { v: mean(fu, kw) / mean(all, kw), e: mean(fu, bl) / mean(all, bl),
+           share: fu.length / all.length, regen: mean(fu, function (u) { return u.regenPct; }) };
+}
+function dirRatio(lineId, dir) {
+  if (!dir || dir === 'Both') return { v: 1, e: 1, share: 1 };
+  var all = N.hopsFor({ lineId: lineId, direction: 'Both' });
+  var dh = all.filter(function (h) { return h.direction === dir; });
+  function kmw(hs, f) {
+    var s = 0, k = 0;
+    hs.forEach(function (h) { s += h.km * f(h); k += h.km; });
+    return k ? s / k : 1;
   }
+  function kw(h) { return h.kwhPerKm; }
+  function bl(h) { return h.baseline; }
+  if (!dh.length) return { v: 1, e: 1, share: 0.5 };
+  return { v: kmw(dh, kw) / kmw(all, kw), e: kmw(dh, bl) / kmw(all, bl), share: 0.5 };
+}
+function lineScope(l, dir, band, fleet) {
+  var fr = fleetRatio(l.id, fleet), dr = dirRatio(l.id, dir), bf = bfFor(l.id, band);
+  var share = fr.share * dr.share * bf.r;
+  return { v: l.kwhPerKm * fr.v * dr.v * bf.v, e: l.baseline * fr.e * dr.e * bf.e,
+           mwh: l.mwh * share * bf.v, runs: Math.round(l.runs * share),
+           regen: fr.regen != null ? fr.regen : l.regenPct };
+}
+function networkScope(band, fleet) {
+  if (fleet === 'All') {
+    var bf = BF[band] || BF.All;
+    return { v: T.kwhPerKm * bf.v, e: T.baseline * bf.e, mwh: T.mwh * bf.r * bf.v,
+             runs: Math.round(T.runs * bf.r), regen: T.regenPct };
+  }
+  var sv = 0, se = 0, sm = 0, sr = 0, sg = 0;
+  N.LINES.forEach(function (l) {
+    if (!inArr(l.fleets, fleet)) return;
+    var s = lineScope(l, 'Both', band, fleet);
+    sv += s.v * s.mwh; se += s.e * s.mwh; sg += s.regen * s.mwh; sm += s.mwh; sr += s.runs;
+  });
+  if (!sm) return networkScope(band, 'All');
+  return { v: sv / sm, e: se / sm, mwh: sm, runs: sr, regen: sg / sm };
+}
+function matchFinding(hopId, band, fleet) {
+  var i, d;
+  for (i = 0; i < N.DEVIATIONS.length; i++) {
+    d = N.DEVIATIONS[i];
+    if (d.interstationId === hopId && (d.band || 'All') === band && (d.fleetScope || 'All') === fleet) return d;
+  }
+  return null;
+}
+function hopScope(h, band, fleet) {
+  var m = matchFinding(h.id, band, fleet);
+  if (m) return { v: m.kwhPerKm, e: m.baseline, runs: m.runs, regen: h.regenPct, finding: m };
+  var bf = bfFor(h.lineId, band), fr = fleetRatio(h.lineId, fleet);
+  return { v: h.kwhPerKm * bf.v * fr.v, e: h.baseline * bf.e * fr.e,
+           runs: Math.round(h.runs * bf.r * fr.share), regen: h.regenPct, finding: null };
+}
+function scopeFor(band) {
+  if (hop) return hopScope(hop, band, st.fleet);
+  if (L) return lineScope(L, st.dir, band, st.fleet);
+  return networkScope(band, st.fleet);
+}
+
+var S = scopeFor(st.band), S0 = scopeFor('All');
+if (focus) {
+  var fUnits = focus.units ? focus.units.map(function (id) { return N.unitById(id); }).filter(function (u) { return !!u; }) : [];
+  S = { v: focus.kwhPerKm, e: focus.baseline, runs: focus.runs, mwh: S.mwh,
+        regen: hop ? hop.regenPct : fUnits.length ? mean(fUnits, function (u) { return u.regenPct; }) : S.regen };
+}
+var basis = focus || (hop ? matchFinding(hop.id, st.band, st.fleet) : null);
+
+function excessFor(v, ref) {
+  if (ref == null || v <= ref) return 0;
+  if (basis) return basis.annualMWh * (v - ref) / (basis.kwhPerKm - basis.baseline);
+  if (hop) return (v - ref) * hop.km * S.runs * K_HOP;
+  return S.mwh * (v - ref) / v * 52 / 12;
+}
+
+/* ------------------------------------------------------------ references */
+var owner = L ? REF.lines[L.id] : REF.network;
+var recSrc = hop ? REF.section : owner;
+var refs = { expected: S.e };
+var alertPct, compareNote = '';
+if (hop) {
+  refs.target = null;
+  refs.achievable = L.id === 'L4' ? null : S.e * REF.achievableRatio;
+  alertPct = REF.section.alertPct;
+} else {
+  var scale = S.e / (L ? L.baseline : T.baseline);
+  refs.target = owner.target != null ? owner.target * scale : null;
+  refs.achievable = owner.achievable != null ? owner.achievable * scale : null;
+  alertPct = owner.alertPct;
+}
+refs.alert = S.e * (1 + alertPct / 100);
+function nullReason(c) {
+  if (c === 'target') return hop ? 'Targets are set for lines, not sections.' : 'No target is set for this scope.';
+  if (c === 'achievable') return 'The Circle Line has no matched-run baseline, so no achievable level can be set.';
+  return '';
+}
+var cmp = st.compare;
+if (refs[cmp] == null) { compareNote = nullReason(cmp) + ' Showing the gap against expected instead.'; cmp = 'expected'; }
+var refVal = refs[cmp];
+
+var regenFleet = st.fleet !== 'All' ? st.fleet : null;
+function lineRegenRef(lineId) {
+  var us = unitsOn(lineId, 'All');
+  return us.length ? mean(us, function (u) { return FS[u.fleet] ? FS[u.fleet].baseRegen : 0; }) : 0;
+}
+var regenRef;
+if (regenFleet) regenRef = FS[regenFleet].baseRegen;
+else if (L) regenRef = lineRegenRef(L.id);
+else {
+  var rs = 0, rm = 0;
+  N.LINES.forEach(function (l) { rs += lineRegenRef(l.id) * l.mwh; rm += l.mwh; });
+  regenRef = rs / rm;
+}
+var noRegen = regenFleet === 'C-series' || (L && L.id === 'L4');
+
+/* ------------------------------------------------------------ confidence */
+var confLevel, confWhy;
+if (focus) {
+  confLevel = focus.confidence;
+  confWhy = focus.limitedBy || (X.fmtInt(focus.runs) + ' runs over ' + R.plural(focus.weeks, 'week', 'weeks') +
+    ', compared with a matched-run baseline.');
+} else {
+  confLevel = owner.confidence;
+  confWhy = owner.confidenceWhy;
+}
+if ((st.fleet === 'C-series' || (L && L.id === 'L4')) && confLevel !== 'low') {
+  confLevel = 'low';
+  confWhy = 'Circle Line and C-series trains are compared with their own history only, and C-series trains do not recover braking energy.';
+}
+
+/* ----------------------------------------------------------------- trend */
+function synth(key, att, pers, start, v, e) {
+  var rnd = N.seed(key), out = [], i, n = WL.length, val;
+  for (i = 0; i < n; i++) {
+    var b = e * (1 + (rnd() - 0.5) * 0.008);
+    if (pers === 'intermittent') val = i % 3 === 2 ? v * (1 + (rnd() - 0.5) * 0.01) : e * (1 + (rnd() - 0.5) * 0.012);
+    else if (pers === 'emerging') val = i === n - 1 ? v : e * (1 + (rnd() - 0.5) * 0.012);
+    else if (att === 'deterioration') {
+      val = i < start ? e * (1.015 + (rnd() - 0.5) * 0.01)
+                      : e * 1.02 + (v - e * 1.02) * ((i - start + 1) / (n - start));
+    } else val = v * (1 + (rnd() - 0.5) * 0.012);
+    out.push({ week: WL[i], value: val, baseline: b });
+  }
+  out[n - 1].value = v; out[n - 1].baseline = e;
+  return out;
+}
+function scaledTrend(src, v, e, gapIdx) {
+  var last = src[src.length - 1];
+  var fv = v / last.value, fe = e / last.baseline;
+  return src.map(function (p, i) {
+    return { week: p.week, value: inArr(gapIdx, i) ? null : p.value * fv, baseline: p.baseline * fe };
+  });
+}
+var trend;
+if (basis) {
+  var bStart = basis.since && WL.indexOf(basis.since) > -1 ? WL.indexOf(basis.since) : WL.length - basis.weeks;
+  trend = synth(basis.id + (hop ? hop.id : ''), basis.attention, basis.persistence, bStart, S.v, S.e);
+} else if (hop) {
+  trend = synth(hop.id + st.band + st.fleet, S.v > refs.alert ? 'opportunity' : null, 'sustained', 0, S.v, S.e);
+} else {
+  trend = scaledTrend(L ? L.trend : T.trend, S.v, S.e, L && N.DATA_GAPS[L.id] ? N.DATA_GAPS[L.id] : []);
+}
+
+function trendAtt(tr, aPct, conf) {
+  var g = tr.map(function (p) { return p.value == null ? null : pct(p.value, p.baseline); });
+  function avg(a) {
+    var s = 0, n = 0;
+    a.forEach(function (x) { if (x != null) { s += x; n++; } });
+    return n ? s / n : 0;
+  }
+  var gEnd = g[g.length - 1];
+  if (!(gEnd > 0)) return null;
+  if (avg(g.slice(-4)) - avg(g.slice(0, 4)) > 1) return 'deterioration';
+  if (gEnd > aPct) return 'opportunity';
+  if (conf === 'low' && gEnd > 0) return 'unclear';
+  return null;
+}
+
+/* ------------------------------------------------------ findings in scope */
+function inScope(d) {
+  if (L && d.lineId !== L.id) return false;
+  if (st.dir !== 'Both' && d.direction && d.direction !== st.dir) return false;
+  if (st.band !== 'All' && d.band && d.band !== st.band) return false;
+  if (st.fleet !== 'All') {
+    if (d.fleetScope && d.fleetScope !== st.fleet) return false;
+    if (!lineRunsFleet(d.lineId, st.fleet)) return false;
+  }
+  if (hop && d.interstationId !== hop.id) return false;
+  return true;
+}
+var scoped = sortDevs(N.DEVIATIONS.filter(inScope));
+var others = scoped.filter(function (d) { return !focus || d.id !== focus.id; });
+
+function lineStatus(l) {
+  var r = REF.lines[l.id];
+  return trendAtt(l.trend, r.alertPct, r.confidence) ||
+    severest(N.DEVIATIONS.filter(function (d) { return d.lineId === l.id; }).map(function (d) { return d.attention; }));
+}
+var STATUS = {};
+N.LINES.forEach(function (l) { STATUS[l.id] = lineStatus(l); });
+
+var pageAtt = basis ? basis.attention : trendAtt(trend, alertPct, confLevel);
+if (!basis && L && !hop && !pageAtt && STATUS[L.id] && st.dir === 'Both' && st.band === 'All' && st.fleet === 'All') pageAtt = STATUS[L.id];
+
+var gapE = pct(S.v, S.e), gapC = pct(S.v, refVal);
+var excessE = excessFor(S.v, S.e), excessC = excessFor(S.v, refVal);
+var bl = L ? Q.baselineById(L.baselineId) : null;
+
+function caseAwait(caseId) {
+  var c = caseId ? Q.caseById(caseId) : null;
+  return c && c.awaiting ? c.awaiting : null;
+}
+function waitsOnMe(d) { var a = caseAwait(d.caseId); return !!a && a.role === ctx.roleId; }
+function caseLink(id) { return '<a class="case-link" href="case.html?id=' + esc(enc(id)) + '">Open case ' + esc(id) + '</a>'; }
+function raiseBtn(id) { return '<button type="button" class="raise-link" data-raise="' + esc(id) + '">Raise a case</button>'; }
+function actionFor(d) {
+  if (d.caseId) return caseLink(d.caseId);
+  if (d.state === 'candidate') return raiseBtn(d.id);
+  return '<span class="att-watch">Watching</span>';
+}
+function subjectOf() {
+  if (focus && trainRelated(focus)) {
+    return (focus.units && focus.units.length ? andList(focus.units) : focus.fleetScope + ' trains') + ' on the ' + lineName(focus.lineId);
+  }
+  if (hop) return hop.label;
+  if (L) return 'The ' + lineName(L.id);
+  return 'The network';
+}
+function subjPlural() {
+  return !!(focus && trainRelated(focus) && !(focus.units && focus.units.length === 1));
+}
+function vb(one, many) { return subjPlural() ? many : one; }
+function qualifiers() {
+  var q = [];
+  if (st.dir !== 'Both') q.push(lower(st.dir));
+  if (st.band !== 'All') q.push(lower(st.band) + ' services');
+  if (st.fleet !== 'All' && !(focus && trainRelated(focus))) q.push(st.fleet + ' trains');
+  return q;
+}
+
+/* ------------------------------------------------------------- scope bar */
+function seg(label, items) {
+  return '<div class="sb-group"><span class="sb-label">' + esc(label) + '</span><div class="seg">' +
+    items.map(function (it) {
+      if (it.off) return '<span class="off" title="' + esc(it.off) + '">' + it.html + '</span>';
+      return '<a class="' + (it.on ? 'on' : '') + '" href="' + href(it.ch) + '">' + it.html + '</a>';
+    }).join('') + '</div></div>';
+}
+function dot(att) { return att && ATT[att] ? '<span class="sd sd-' + ATT[att].cls + '" title="' + esc(ATT[att].label) + '"></span>' : '<span class="sd"></span>'; }
+
+function scopeBar() {
+  var crumb = ['<a href="overview.html">Network</a>'];
+  if (L) crumb.push(hop || focus ? '<a href="' + href({ line: L.id }) + '">' + esc(lineName(L.id)) + '</a>' : '<span>' + esc(lineName(L.id)) + '</span>');
+  if (hop) crumb.push(focus ? '<a href="' + href({ hop: hop.id }) + '">' + esc(hop.label) + '</a>' : '<span>' + esc(hop.label) + '</span>');
+  else if (focus) crumb.push('<span>' + esc(placeOf(focus)) + '</span>');
+  if (focus) crumb.push('<span class="mono">' + esc(focus.id) + '</span>');
+
+  var chips = [];
+  if (st.dir !== 'Both') chips.push({ t: st.dir, ch: { dir: 'Both' } });
+  if (st.band !== 'All') chips.push({ t: st.band + ' services', ch: { band: 'All' } });
+  if (st.fleet !== 'All') chips.push({ t: st.fleet, ch: { fleet: 'All' } });
+  if (st.compare !== 'expected') chips.push({ t: 'Against ' + lower(COMPARE_LABEL[st.compare]), ch: { compare: 'expected' } });
+
+  var lines = [{ html: 'Network', on: !L, ch: { line: null } }];
+  LINE_ORDER.forEach(function (id) {
+    lines.push({ html: dot(STATUS[id]) + SHORT[id], on: L && L.id === id, ch: { line: id } });
+  });
+  var dirs = DIRS.map(function (d) {
+    return { html: d === 'Both' ? 'Both' : d, on: st.dir === d, ch: { dir: d }, off: L ? null : 'Choose a line first' };
+  });
+  var bands = BANDS.map(function (b) { return { html: b === 'All' ? 'All day' : b, on: st.band === b, ch: { band: b } }; });
+  var fleets = FLEETS.map(function (f) {
+    var off = L && f !== 'All' && !inArr(L.fleets, f) ? 'The ' + f + ' does not run on the ' + lineName(L.id) + '.' : null;
+    return { html: f === 'All' ? 'All trains' : f, on: st.fleet === f, ch: { fleet: f }, off: off };
+  });
+  var periods = PERIODS.map(function (p) { return { html: p.label, on: st.period === p.id, ch: { period: p.id } }; });
+  var compares = COMPARES.map(function (c) {
+    return { html: COMPARE_LABEL[c], on: cmp === c, ch: { compare: c }, off: refs[c] == null ? nullReason(c) : null };
+  });
+
+  var pick = '';
+  if (L) {
+    var hs = N.hopsFor({ lineId: L.id, direction: 'Both' });
+    var groups = ['Northbound', 'Southbound'].map(function (d) {
+      var list = hs.filter(function (h) { return h.direction === d; });
+      if (!list.length) return '';
+      return '<div class="sb-pick-col"><div class="sb-label">' + esc(d) + '</div>' + list.map(function (h) {
+        var f = matchFinding(h.id, 'All', 'All') || matchFinding(h.id, 'Peak', 'All');
+        return '<a class="' + (hop && hop.id === h.id ? 'on' : '') + '" href="' + href({ hop: h.id }) + '">' +
+          esc(h.label) + (f ? dot(f.attention) : '') + '</a>';
+      }).join('') + '</div>';
+    }).join('');
+    pick = '<details class="sb-pick"><summary>' + (hop ? 'Change section' : 'Choose a section') + '</summary>' +
+      '<div class="sb-pick-body">' + groups + '</div></details>';
+  }
+
+  return '<div class="scopebar">' +
+    '<div class="sb-row">' +
+      '<nav class="sb-crumb">' + crumb.join('<span class="sb-sep">\u203a</span>') + '</nav>' +
+      '<div class="sb-chips">' + chips.map(function (c) {
+        return '<a class="sb-chip" href="' + href(c.ch) + '" title="Remove">' + esc(c.t) + '<span aria-hidden="true">\u00d7</span></a>';
+      }).join('') + '</div>' +
+      '<div class="sb-conf">' + X.conf(confLevel, confWhy) + X.estTag() + '</div>' +
+    '</div>' +
+    '<div class="sb-row sb-controls">' +
+      seg('Line', lines) + seg('Direction', dirs) + seg('Service', bands) + seg('Fleet', fleets) +
+      seg('Period', periods) + seg('Compare with', compares) + pick +
+    '</div>' +
+  '</div>';
+}
+
+/* --------------------------------------------------------- focus banner */
+function whereSentence(d) {
+  if (trainRelated(d)) {
+    var who = d.units ? placeOf(d) : placeOf(d) + ' trains';
+    return 'Measured on ' + who + ' on the ' + lineName(d.lineId) + '. This finding is about trains, not a location.';
+  }
+  var s = 'Measured for ' + (st.dir !== 'Both' ? lower(st.dir) + ' services' : 'all services');
+  if (st.band !== 'All') s += ' in the ' + lower(st.band) + ' band';
+  if (st.fleet !== 'All') s += ' on ' + st.fleet + ' trains';
+  if (hop) s += ' between ' + hop.from + ' and ' + hop.to;
+  else if (placeOf(d).indexOf(' \u2192 ') > -1) {
+    var ab = placeOf(d).split(' \u2192 ');
+    s += ' between ' + ab[0] + ' and ' + ab[1];
+  }
+  return s + ' on the ' + lineName(d.lineId) + '.';
+}
+function focusBanner() {
+  if (!focus) return '';
+  var a = ATT[focus.attention];
+  var caseLine = '', act = [];
+  if (focus.caseId) {
+    var c = Q.caseById(focus.caseId), aw = caseAwait(focus.caseId);
+    caseLine = 'In case ' + esc(focus.caseId) + (c ? SEP + esc(R.stageOf(c).label) : '') +
+      (aw ? SEP + 'waiting on ' + esc(R.personOf(aw.role)) + ' for ' + esc(aw.what) + (aw.role === ctx.roleId ? ' (you)' : '') : '');
+    act.push(caseLink(focus.caseId));
+  } else if (focus.state === 'held') {
+    caseLine = 'Keep watching. The platform will raise it if it persists; no change is proposed yet.';
+  } else {
+    caseLine = 'Not in a case yet. Raise one to start an investigation and assign who looks next.';
+    act.push(raiseBtn(focus.id));
+  }
+  act.push('<a class="cell-link" href="' + href({ finding: null }) + '">Clear focus</a>');
+  return '<section class="focus-banner fb-' + a.cls + '">' +
+    '<div class="fb-top"><span class="att-kind">' + esc(a.label) + '</span>' + X.conf(focus.confidence, confWhy) +
+      '<span class="mono fb-id">' + esc(focus.id) + '</span></div>' +
+    '<h2 class="fb-title">' + esc(focus.finding) + '</h2>' +
+    '<p class="fb-where">' + esc(whereSentence(focus)) + '</p>' +
+    '<p class="fb-meta mono">' + fmt(focus.kwhPerKm) + ' kWh/km against ' + fmt(focus.baseline) + ' expected' + SEP +
+      X.fmtInt(focus.runs) + ' runs over ' + esc(R.plural(focus.weeks, 'week', 'weeks')) + SEP +
+      'about ' + mwhTxt(focus.annualMWh) + ' a year (' + esc(gbp(focus.annualMWh)) + ')</p>' +
+    '<p class="fb-case">' + caseLine + '</p>' +
+    '<div class="fb-actions">' + act.join('') + '</div>' +
+  '</section>';
+}
+
+/* ---------------------------------------------------------------- status */
+function trendClause(att) {
+  if (att === 'deterioration') return 'The gap has been growing' + (basis && basis.since ? ' since ' + basis.since : '') + '.';
+  if (att === 'opportunity') return 'It is consistently above expected but not getting worse \u2014 an opportunity rather than a fault.';
+  if (att === 'unclear') return 'The signal is not strong enough yet to tell whether this is real.';
+  return 'No sustained change over the period.';
+}
+function statusBlock() {
+  var q = qualifiers();
+  var subj = subjectOf() + (q.length ? ' (' + q.join(', ') + ')' : '');
+  var verb = Math.abs(gapC) < 0.05 ? vb('uses', 'use') + ' the same energy per kilometre as ' + COMPARE_TEXT[cmp]
+    : vb('uses ', 'use ') + X.fmt(Math.abs(gapC), 1) + '% ' + (gapC > 0 ? 'more' : 'less') + ' energy per kilometre than ' + COMPARE_TEXT[cmp];
+  var alertC = gapE > alertPct ? 'That is above the alert threshold of +' + X.fmt(alertPct, 1) + '% over expected.'
+    : gapE > 0 ? 'That is within the alert threshold of +' + X.fmt(alertPct, 1) + '% over expected.'
+    : 'That is at or below expected.';
+  if (cmp !== 'expected') alertC = 'Against expected it is ' + signed(gapE) + '%. ' + alertC;
+  return '<section class="status">' +
+    '<p class="status-line">' + esc(subj) + ' <strong>' + esc(verb) + '</strong>. ' + esc(alertC) + ' ' + esc(trendClause(pageAtt)) + '</p>' +
+    (compareNote ? '<p class="status-note">' + esc(compareNote) + '</p>' : '') +
+    '<p class="status-meta">Expected = what comparable runs use in the same conditions (' +
+      (bl ? esc(bl.label) + SEP + esc(bl.id) + ' v' + esc(String(bl.version)) : 'a blend of the four line baselines') +
+      '). <a class="cell-link" href="#references">How the references are set</a></p>' +
+  '</section>';
+}
+
+/* -------------------------------------------------------------- KPI tiles */
+var findingsHere = focus
+  ? sortDevs(N.DEVIATIONS.filter(function (d) { return d.lineId === L.id && d.id !== focus.id; }))
+  : scoped;
+
+function tile(o) {
+  return '<div class="kt' + (o.tone ? ' kt-' + o.tone : '') + '">' +
+    '<div class="kt-label">' + o.label + '</div>' +
+    '<div class="kt-value mono">' + o.value + (o.unit ? '<span class="kt-unit">' + esc(o.unit) + '</span>' : '') + '</div>' +
+    '<div class="kt-sub">' + o.sub + '</div>' + (o.extra || '') +
+  '</div>';
+}
+function kpiTiles() {
+  var t1 = tile({
+    label: 'Energy per kilometre', value: fmt(S.v), unit: 'kWh/km',
+    tone: gapE > alertPct ? 'bad' : gapE > 0 ? 'warn' : 'good',
+    sub: esc(signed(gapC)) + '% against ' + esc(COMPARE_TEXT[cmp]),
+    extra: X.bullet({ value: S.v, expected: S.e, band: alertPct / 100, target: refs.target, achievable: refs.achievable })
+  });
+  var t2 = tile({
+    label: 'Energy above ' + esc(lower(COMPARE_LABEL[cmp])), value: excessC > 0 ? X.fmtInt(Math.round(excessC)) : '0', unit: 'MWh a year',
+    sub: excessC > 0 ? 'About ' + esc(gbp(excessC)) + ' a year if nothing changes.' : 'At or below ' + esc(COMPARE_TEXT[cmp]) + '.',
+    extra: cmp !== 'expected' && excessE > 0 ? '<div class="kt-foot">Of which ' + esc(mwhTxt(excessE)) + ' is above expected.</div>' : ''
+  });
+  var regenD = S.regen - regenRef;
+  var t3 = tile({
+    label: 'Braking energy recovered', value: X.fmt(S.regen, 1), unit: '%',
+    tone: noRegen ? null : regenD < -1 ? 'warn' : null,
+    sub: noRegen ? 'C-series trains have no regenerative braking, so this is shown for reference only.'
+      : esc(signed(regenD)) + ' points against the fleet norm of ' + X.fmt(regenRef, 1) + '%.'
+  });
+  var inCase = findingsHere.filter(function (d) { return !!d.caseId; });
+  if (focus && focus.caseId) inCase = inCase.concat([focus]);
+  var all = focus ? findingsHere.concat([focus]) : findingsHere;
+  var mwhCase = 0, mwhAll = 0, mine = 0;
+  all.forEach(function (d) { mwhAll += d.annualMWh; if (waitsOnMe(d)) mine++; });
+  inCase.forEach(function (d) { mwhCase += d.annualMWh; });
+  var t4 = tile({
+    label: 'Under management',
+    value: all.length ? inCase.length + '<span class="kt-of"> of ' + all.length + '</span>' : '0',
+    unit: all.length ? R.plural(all.length, 'finding', 'findings').replace(/^\d+ /, '') : '',
+    sub: all.length
+      ? 'About ' + esc(mwhTxt(mwhCase)) + ' of ' + esc(mwhTxt(mwhAll)) + ' a year is already in a case.'
+      : 'No findings ' + (level === 'network' ? 'on the network' : 'in this scope') + '.',
+    extra: mine && can('caseload') ? '<div class="kt-foot"><a class="cell-link" href="caseload.html">' +
+      esc(R.plural(mine, 'case is', 'cases are')) + ' waiting on you</a></div>' : ''
+  });
+  return '<section class="kt-grid">' + t1 + t2 + t3 + t4 + '</section>';
+}
+
+/* -------------------------------------------------------- attention cards */
+function attCard(o) {
+  var a = ATT[o.kind];
+  return '<article class="att att-' + a.cls + '">' +
+    '<div class="att-top"><span class="att-kind">' + esc(a.label) + '</span>' + (o.conf || '') +
+      (o.me ? '<span class="att-me">Waiting on you</span>' : '') +
+      (o.id ? '<span class="att-id mono">' + esc(o.id) + '</span>' : '') + '</div>' +
+    '<a class="att-title" href="' + o.href + '">' + esc(o.title) + '</a>' +
+    (o.where ? '<p class="att-where">' + esc(o.where) + '</p>' : '') +
+    '<div class="att-foot"><span class="att-size mono">' + o.size + '</span>' +
+      '<span class="att-who">' + o.who + '</span>' + (o.action || '') + '</div>' +
+  '</article>';
+}
+function findingCard(d) {
+  var aw = caseAwait(d.caseId);
+  return attCard({
+    kind: d.attention, id: d.id, conf: X.conf(d.confidence, d.limitedBy), me: waitsOnMe(d),
+    href: href({ finding: d.id }), title: d.finding,
+    where: level === 'network' || focus ? lineName(d.lineId) : '',
+    size: esc(signed(pct(d.kwhPerKm, d.baseline))) + '% against expected' + SEP + 'about ' + esc(mwhTxt(d.annualMWh)) + ' a year',
+    who: aw ? 'Waiting on ' + esc(R.personOf(aw.role)) + ' for ' + esc(aw.what)
+      : d.state === 'held' ? 'Held until there is more data' : 'Not in a case yet',
+    action: actionFor(d)
+  });
+}
+function targetCard() {
+  if (hop || focus || refs.target == null || S.v <= refs.target) return '';
+  var gapT = excessFor(S.v, refs.target), covered = 0;
+  scoped.forEach(function (d) { if (d.caseId) covered += d.annualMWh; });
+  return attCard({
+    kind: 'target', href: href({ compare: 'target' }),
+    title: subjectOf() + ' is running ' + X.fmt(pct(S.v, refs.target), 1) + '% above its target of ' + fmt(refs.target) + ' kWh/km',
+    where: owner.targetSource || '',
+    size: 'about ' + esc(mwhTxt(gapT)) + ' a year to close',
+    who: covered ? 'Open cases cover about ' + esc(mwhTxt(covered)) + ' of it' : 'No open case addresses it yet',
+    action: '<a class="cell-link" href="' + href({ compare: 'target' }) + '">Compare with target</a>'
+  });
+}
+function outcomeCards() {
+  if (hop || focus) return [];
+  return (H.VERIFYING || []).filter(function (v) {
+    return !L || String(v.scope).substring(0, 2) === L.id;
+  }).map(function (v) {
+    var lid = String(v.scope).substring(0, 2);
+    return attCard({
+      kind: 'outcome', id: v.caseId, href: 'case.html?id=' + esc(enc(v.caseId)),
+      title: v.lever + ' on the ' + lineName(lid) + ': is it working?',
+      where: R.plural(v.elapsedWeeks, 'week', 'weeks') + ' of ' + v.totalWeeks + ' measured',
+      size: v.modelled ? 'modelled saving about ' + esc(mwhTxt(v.modelled)) + ' a year' : 'saving not yet modelled',
+      who: v.trend === 'on track' ? 'On track so far' : 'Too early to tell',
+      action: caseLink(v.caseId)
+    });
+  });
+}
+function attentionBlock() {
+  var cards = findingsHere.map(findingCard);
+  var list = cards.slice(0, 3);
+  var tc = targetCard();
+  if (tc) list.push(tc);
+  list = list.concat(outcomeCards(), cards.slice(3));
+  var head = focus ? 'Elsewhere on the ' + lineName(L.id)
+    : level === 'network' ? 'What needs attention first' : 'What needs attention in this scope';
+  var body;
+  if (!list.length) {
+    body = '<p class="att-none">' + (focus ? 'Nothing else on this line needs attention.'
+      : 'Nothing in this scope needs attention. Every measure is inside its alert threshold or already being handled.') + '</p>';
+  } else {
+    body = '<div class="att-list">' + list.slice(0, 5).join('') + '</div>' +
+      (list.length > 5 ? '<details class="att-more"><summary>' + esc(R.plural(list.length - 5, 'more item', 'more items')) +
+        '</summary><div class="att-list">' + list.slice(5).join('') + '</div></details>' : '');
+  }
+  return '<section class="att-sec">' +
+    '<div class="sec-head"><h2>' + esc(head) + '</h2>' +
+      '<p>Ranked by the energy at stake, weighted by how sure the platform is. Open one to narrow the dashboard to it.</p></div>' +
+    body + '</section>';
+}
+
+/* ---------------------------------------------------------- chart panels */
+function panel(o) {
+  // At low confidence, a threshold crossing is a prompt to look, not an opportunity.
+  if (confLevel === 'low' && o.att === 'opportunity') o.att = 'unclear';
+  var a = o.att ? ATT[o.att] : null;
+  return { id: o.id, att: o.att || null, pinned: !!o.pinned, html:
+    '<section class="cp' + (o.span ? ' cp-span' : '') + (a ? ' cp-att-' + a.cls : '') + '" id="p-' + esc(o.id) + '">' +
+      '<header class="cp-head"><div><div class="cp-q">' + esc(o.q) + '</div><h3 class="cp-title">' + esc(o.title) + '</h3></div>' +
+        (a ? '<span class="cp-flag">' + esc(a.label) + '</span>' : '') + (o.tag || '') + '</header>' +
+      (o.why ? '<p class="cp-why">' + esc(o.why) + '</p>' : '') +
+      o.body + (o.key ? X.key(o.key) : '') + (o.reading ? X.note(o.reading, o.svc || 'S5') : '') +
+      (o.howto ? '<details class="howto"><summary>How to read this</summary><p>' + o.howto + '</p></details>' : '') +
+      (o.working ? '<details class="working"><summary>How this is worked out</summary><p>' + o.working + '</p></details>' : '') +
+      (o.foot ? '<div class="cp-foot">' + o.foot + '</div>' : '') +
+    '</section>' };
+}
+function andList(a) {
+  if (a.length < 2) return a.join('');
+  return a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
+}
+var aFrac = alertPct / 100;
+var subjNow = subjectOf();
+
+/* 1. Trend: always first, because it answers "is it getting worse?" */
+function trendPanel() {
+  var data = trend, marks, shade = 0, off = 0;
+  marks = N.eventsFor(L ? L.id : null, hop ? hop.id : null).filter(function (e) {
+    return !(focus && !hop && e.hopId);
+  }).map(function (e) { return { i: e.i, label: e.label, kind: e.kind }; });
+  if (st.period === 'p28') shade = 4;
+  if (st.period === 'p6m') {
+    var rnd = N.seed('pre' + (L ? L.id : 'net') + (hop ? hop.id : '') + (focus ? focus.id : '')), pre = [], k;
+    var f0 = trend[0];
+    for (k = 0; k < 14; k++) {
+      pre.push({ week: 'W' + (13 + k), value: f0.baseline * (f0.value / f0.baseline) * (1 + (rnd() - 0.5) * 0.012),
+                 baseline: f0.baseline * (1 + (rnd() - 0.5) * 0.006) });
+    }
+    data = pre.concat(trend); off = 14;
+    marks = marks.map(function (m) { return { i: m.i + off, label: m.label, kind: m.kind }; });
+  }
+  var last = data.length - 1;
+  var ciF = confLevel === 'low' ? 0.025 : confLevel === 'medium' ? 0.012 : 0;
+  var body = X.series(data, {
+    height: 250, width: 1060, yLabel: 'kWh/km', band: aFrac, target: refs.target, achievable: refs.achievable,
+    markers: marks, ci: ciF, shade: shade,
+    annotate: { i: last, text: signed(gapE) + '%', tone: gapE > alertPct ? 'warn' : 'good' }
+  });
+  var over = 0, n = 0;
+  trend.forEach(function (p) {
+    if (p.value == null) return;
+    n++;
+    if (p.value > p.baseline * (1 + aFrac)) over++;
+  });
+  var ev = '';
+  marks.forEach(function (m) {
+    if (ev) return;
+    if (m.kind === 'gap') ev = ' One week has no data because substation metering was missing; it is left blank rather than estimated.';
+    else if (m.kind === 'intervention') ev = ' The ' + m.label + ' is marked; compare the weeks either side of it.';
+    else if (m.kind === 'changepoint') ev = ' The platform marks where the gap started to grow.';
+  });
+  var keys = ['measured', 'expected', 'band', 'alert'];
+  if (refs.target != null) keys.push('target');
+  if (refs.achievable != null) keys.push('achievable');
+  if (marks.length) keys.push('event');
+  if (L && N.DATA_GAPS[L.id] && !basis) keys.push('gap');
+  if (shade) keys.push('period');
+  var runsHref = L ? 'runs.html?line=' + enc(L.id) + (st.dir !== 'Both' ? '&dir=' + enc(st.dir) : '') +
+    (st.band !== 'All' ? '&band=' + enc(st.band) : '') : 'runs.html';
+  return panel({
+    id: 'trend', pinned: true, span: true, att: pageAtt,
+    q: 'Is it getting worse?', title: 'Energy per kilometre, week by week',
+    why: trendClause(pageAtt), body: body, key: keys, svc: 'S1',
+    reading: X.em(subjNow) + vb(' has', ' have') + ' been above the alert threshold in ' + X.em(over + ' of ' + n) + ' weeks. ' +
+      esc(trendClause(pageAtt)) + esc(ev) +
+      (ciF ? ' The shaded band around the measured line shows the uncertainty that comes with ' + esc(confLevel) + ' confidence.' : ''),
+    howto: 'The solid line is measured energy per kilometre. The dashed line is what comparable runs use in the same conditions, and the grey band around it is the normal range; its upper edge is the alert threshold. Points above it turn amber. Dotted lines mark the target and the achievable level, and vertical rules mark events on the railway.',
+    working: 'Expected comes from ' + esc(bl ? bl.label + ' (' + X.fmtInt(bl.sampleRuns) + (bl.type === 'historical-self' ? ' runs' : ' matched runs') + ')' : 'the four line baselines, weighted by energy') +
+      '. The alert threshold is +' + X.fmt(alertPct, 1) + '% over expected (' + esc(hop ? REF.section.alertSource : owner.alertSource) + ').' +
+      ' Traction energy is estimated from train movement and calibrated against substation metering.',
+    foot: can('runs') ? '<a class="cell-link" href="' + esc(runsHref) + '">See the runs behind this</a>' : ''
+  });
+}
+
+/* 2. By line (network only) */
+var STATUS_TONE = { deterioration: 'red', opportunity: 'amber', unclear: 'tertiary' };
+function linePanel() {
+  var ids = LINE_ORDER.filter(function (id) { return lineRunsFleet(id, st.fleet); });
+  var rows = ids.map(function (id) {
+    var l = N.lineById(id), ls = lineScope(l, 'Both', st.band, st.fleet), s = STATUS[id];
+    return { id: id, gap: pct(ls.v, ls.e), item: {
+      label: lineName(id), sub: s ? ATT[s].label : 'Within range', value: ls.v, baseline: ls.e,
+      tone: STATUS_TONE[s] || 'green', href: url({ line: id }), title: 'Narrow the dashboard to the ' + lineName(id),
+      flag: R.plural(N.DEVIATIONS.filter(function (d) { return d.lineId === id; }).length, 'finding', 'findings')
+    } };
+  });
+  var att = severest(ids.map(function (id) { return STATUS[id]; }));
+  var hit = att ? ids.filter(function (id) { return STATUS[id] === att; }).map(lineName) : [];
+  rows = rows.map(function (r, i) { return { r: r, i: i }; }).sort(function (a, b) {
+    return b.r.gap - a.r.gap || a.i - b.i;
+  }).map(function (x) { return x.r; });
+  var worst = rows[0];
+  var overN = rows.filter(function (r) { return r.gap > REF.lines[r.id].alertPct; }).length;
+  return panel({
+    id: 'where', att: att, q: 'Where is it happening?', title: 'By line',
+    why: att ? andList(hit) + (hit.length > 1 ? ' are ' : ' is ') + lower(ATT[att].label) + '.' : '',
+    body: X.rankedBars(rows.map(function (r) { return r.item; }), { dp: 2 }),
+    reading: X.em(lineName(worst.id)) + ' is furthest above expected, at ' + esc(signed(worst.gap)) + '%. ' +
+      esc(R.plural(overN, 'line is', 'lines are')) + ' above the alert threshold. Select a line to narrow the dashboard to it.',
+    howto: 'Each bar is a line\u2019s energy per kilometre. The thin rule is its expected level. The colour shows whether the line is getting worse (red), steadily above expected (amber) or not yet clear (grey).'
+  });
+}
+
+/* 2b. Where on the line (line level) */
+function wherePanel() {
+  var hs = N.hopsFor({ lineId: L.id, direction: st.dir }).map(function (h) {
+    var hsS = hopScope(h, st.band, st.fleet);
+    return { h: h, s: hsS, x: (hsS.v - hsS.e) * h.km * hsS.runs };
+  }).sort(function (a, b) { return b.x - a.x || (a.h.id < b.h.id ? -1 : 1); });
+  var top = hs.slice(0, 8);
+  var flagged = top.filter(function (r) { return r.s.v > r.s.e * (1 + REF.section.alertPct / 100); });
+  var att = severest(top.map(function (r) { return r.s.finding ? r.s.finding.attention : null; })) ||
+    (flagged.length ? 'opportunity' : null);
+  var trainFocus = !!(focus && trainRelated(focus));
+  if (trainFocus) att = null;
+  return panel({
+    id: 'where', att: att, q: 'Where is it happening?', title: 'Sections with the most energy above expected',
+    why: trainFocus ? 'This finding is about trains, so sections are shown for context only.' : flagged.length ? (flagged.length > 2
+        ? flagged.slice(0, 2).map(function (r) { return r.h.label; }).join(', ') + ' and ' + (flagged.length - 2) + ' more are'
+        : andList(flagged.map(function (r) { return r.h.label; })) + (flagged.length > 1 ? ' are' : ' is')) +
+      ' above the section alert threshold.' : '',
+    body: X.rankedBars(top.map(function (r) {
+      return { label: r.h.label, sub: r.h.direction + (r.h.caseId ? SEP + r.h.caseId : ''), value: r.s.v, baseline: r.s.e,
+               tone: r.s.finding ? STATUS_TONE[r.s.finding.attention] : r.s.v > r.s.e * (1 + REF.section.alertPct / 100) ? 'amber' : null,
+               href: url({ hop: r.h.id }), title: 'Narrow the dashboard to ' + r.h.label,
+               flag: r.s.finding ? 'Finding' : '' };
+    }), { dp: 2 }),
+    reading: top.length ? X.em(top[0].h.label) + ' has the most energy above expected on the ' + esc(lineName(L.id)) +
+      (st.dir !== 'Both' ? ' ' + esc(lower(st.dir)) : '') + '. Select a section to see what may be contributing.' : 'No sections in this scope.',
+    howto: 'Sections are ranked by total energy above expected, which combines how far above expected they are with how long they are and how many trains use them. A short section far above expected can rank below a long one slightly above.'
+  });
+}
+
+/* 3. By hour */
+function hourPanel() {
+  var lid = L ? L.id : null;
+  var fv = S0.v / T.kwhPerKm, fe = S0.e / T.baseline;
+  var items = N.HOURLY.map(function (h) {
+    var b = h.band === 'Peak' ? 'Peak' : 'Off-peak', bl2 = bfFor(lid, b), bn = BF[b];
+    var v = h.kwhPerKm * fv * bl2.v / bn.v, e = h.baseline * fe * bl2.e / bn.e;
+    return { label: h.label, value: v, baseline: e, tone: v > e * (1 + aFrac) ? 'amber' : 'accent',
+             dim: (st.band === 'Peak' && b !== 'Peak') || (st.band === 'Off-peak' && b === 'Peak'),
+             href: url({ band: b }), title: h.label + SEP + fmt(v) + ' kWh/km against ' + fmt(e) + ' expected' + SEP + lower(b) + ' \u2014 select to narrow' };
+  });
+  var pk = scopeFor('Peak'), op = scopeFor('Off-peak');
+  if (focus && focus.band) { if (focus.band === 'Peak') pk = S; else op = S; }
+  var pg = pct(pk.v, pk.e), og = pct(op.v, op.e);
+  var banded = focus ? (focus.band ? [focus] : []) : scoped.filter(function (d) { return !!d.band; });
+  var att = severest(banded.map(function (d) { return d.attention; }));
+  if (!att && Math.max(pg, og) > alertPct && Math.abs(pg - og) > Math.max(1, alertPct)) att = 'opportunity';
+  var hiB = pg >= og ? 'Peak' : 'Off-peak', loB = pg >= og ? 'off-peak' : 'in the peak';
+  var why = hiB + ' services run ' + X.fmt(Math.max(pg, og), 1) + '% above expected, against ' + X.fmt(Math.min(pg, og), 1) + '% ' + loB + '.' +
+    (banded.length && !focus ? ' ' + R.plural(banded.length, 'finding is', 'findings are') + ' tied to one service band.' : '');
+  return panel({
+    id: 'hour', att: att, q: 'When is it happening?', title: 'By hour of the day',
+    why: why, body: X.columns(items, { height: 170, zero: false }), key: ['measured', 'expected'],
+    reading: esc(why) + ' Peak hours always cost more per kilometre, so each hour is compared with its own expected level, not the daily average. Select a bar to narrow the dashboard to that band.',
+    howto: 'Each column is one hour. The dashed rule on each is what comparable runs use at that hour. Amber columns are above the alert threshold. Columns outside the selected service band are faded.'
+  });
+}
+
+/* 4. Trains */
+function trainPanel() {
+  var us = unitsOn(L ? L.id : null, st.fleet).slice().sort(function (a, b) { return b.index - a.index || (a.id < b.id ? -1 : 1); });
+  var top = us.slice(0, 6);
+  if (focus && focus.units) {
+    focus.units.forEach(function (id) {
+      if (!top.filter(function (u) { return u.id === id; }).length) { var u = N.unitById(id); if (u) top.push(u); }
+    });
+  }
+  function aIdx(f) { return REF.fleets[f] ? REF.fleets[f].alertIndex : 108; }
+  var over = us.filter(function (u) { return u.index > aIdx(u.fleet); });
+  var tf = (focus ? [focus] : []).concat(findingsHere).filter(trainRelated);
+  var att = severest(tf.map(function (d) { return d.attention; })) || (over.length ? 'unclear' : null);
+  var body = '';
+  if (level === 'network') {
+    body += '<div class="cp-sub">By fleet</div>' + X.rankedBars(N.fleetSummary().filter(function (f) {
+      return st.fleet === 'All' || f.id === st.fleet;
+    }).map(function (f) {
+      return { label: f.id, sub: (f.regenCapable ? 'Regenerative braking' : 'No regenerative braking') + SEP + R.plural(f.units, 'train', 'trains'), value: f.index, baseline: 100,
+               href: url({ fleet: f.id }), title: 'Narrow the dashboard to the ' + f.id,
+               tone: f.index > aIdx(f.id) ? 'red' : f.index > 100 ? 'amber' : 'green' };
+    }), { dp: 0 }) + '<div class="cp-sub">Trains furthest from their fleet</div>';
+  }
+  body += X.rankedBars(top.map(function (u) {
+    return { label: u.id, sub: u.fleet + (u.caseId ? SEP + u.caseId : ''), value: u.index, baseline: 100,
+             tone: u.index > aIdx(u.fleet) ? 'red' : u.index > 100 ? 'amber' : 'green',
+             href: can('fleet') ? 'fleet.html?fleet=' + enc(u.fleet) + '&unit=' + enc(u.id) : null,
+             title: u.id + ' uses ' + u.index + '% of its fleet\u2019s typical energy on the same routes',
+             flag: u.caseId ? 'In case' : '' };
+  }), { dp: 0 });
+  var overIds = over.map(function (u) { return u.id; });
+  var overTxt = overIds.length > 3 ? overIds.slice(0, 3).join(', ') + ' and ' + (overIds.length - 3) + ' more'
+    : andList(overIds);
+  return panel({
+    id: 'trains', att: att, q: 'Is it the trains?', title: level === 'network' ? 'Fleets and trains' : 'Trains on this line',
+    why: overIds.length ? overTxt + (overIds.length > 1 ? ' are' : ' is') +
+      ' above the fleet alert index of ' + aIdx(over[0].fleet) + '.' : '',
+    body: body,
+    reading: overIds.length
+      ? X.em(overTxt) + (overIds.length > 1 ? ' use' : ' uses') + ' noticeably more energy than the rest of the fleet on the same routes. When only a few trains stand out, the cause is more likely the trains than the timetable or the track.'
+      : 'No train stands out from its fleet. If energy is high here, the cause is more likely how trains are run than the trains themselves.',
+    howto: 'The index compares each train with the rest of its fleet on the same routes and conditions. 100 is typical for the fleet; 110 means 10% more energy per kilometre.',
+    foot: can('fleet') ? '<a class="cell-link" href="fleet.html' + (st.fleet !== 'All' ? '?fleet=' + esc(enc(st.fleet)) : '') + '">Open fleet view</a>' : ''
+  });
+}
+
+/* 5. Driving pattern (line level) */
+function patternPanel() {
+  var sp = N.DISTRIBUTIONS.speedProfile, f = S0.v / T.kwhPerKm;
+  var heavy = 0;
+  sp.forEach(function (p) { if (p.label === 'Late brake' || p.label === 'Flat out') heavy += p.share; });
+  var att = heavy > 25 ? 'opportunity' : null;
+  return panel({
+    id: 'pattern', att: att, q: 'Is it how trains are driven?', title: 'Energy by driving pattern',
+    why: heavy + '% of runs brake late or run flat out, and these use the most energy per kilometre.',
+    body: X.rankedBars(sp.map(function (p) {
+      return { label: p.label, sub: p.share + '% of runs', value: p.kwhPerKm * f, baseline: S0.e, tone: p.tone };
+    }), { dp: 2 }),
+    reading: 'Runs that coast use about ' + X.fmt((1 - sp[0].kwhPerKm / sp[4].kwhPerKm) * 100, 0) +
+      '% less energy per kilometre than runs that go flat out. Shifting even a small share of runs towards coasting is usually the cheapest saving on a line.',
+    howto: 'Every run is classified by how it was driven between stations. Each bar is the average energy per kilometre of that pattern; the rule is the line\u2019s expected level.'
+  });
+}
+
+/* 6. Energy split (network) */
+function splitPanel() {
+  var sp = N.ENERGY_SPLIT, tr = 0, rg = 0;
+  sp.forEach(function (d) { if (d.id === 'traction') tr = d.mwh; if (d.id === 'recovered') rg = -d.mwh; });
+  return panel({
+    id: 'split', q: 'Where does the energy go?', title: 'Energy split, last 12 weeks',
+    body: X.stack(sp, { unit: 'MWh' }),
+    reading: 'Braking recovery returns ' + X.em(mwhTxt(rg)) + ', the equivalent of ' + X.fmt(rg / tr * 100, 0) +
+      '% of traction energy. Traction is the part this platform can influence most directly.',
+    howto: 'The bar splits the energy drawn from the substations into traction, on-board systems and losses. Energy returned by braking is shown separately.'
+  });
+}
+
+/* 7. What may be contributing (section level) */
+var FACTORS = [
+  { k: 'regenPct', label: 'Braking energy recovered', unit: '%', dp: 1, worse: -1, role: 'rse', group: 'Train',
+    what: 'Less is recovered when trains brake late or their braking system underperforms.' },
+  { k: 'coastPct', label: 'Time spent coasting', unit: '%', dp: 0, worse: -1, role: 'opm', group: 'Movement',
+    what: 'Less coasting means more time under power between stations.' },
+  { k: 'dwellMean', label: 'Station dwell', unit: ' s', dp: 0, worse: 1, role: 'opm', group: 'Operational',
+    what: 'Long stops push trains to run harder afterwards to keep time.' },
+  { k: 'runtimeSd', label: 'Run-time variation', unit: ' s', dp: 1, worse: 1, role: 'opm', group: 'Movement',
+    what: 'Uneven running means more braking and re-accelerating, often from regulation or congestion.' }
+];
+function contributors() {
+  var peers = N.hopsFor({ lineId: hop.lineId, direction: hop.direction }).filter(function (h) { return h.id !== hop.id; });
+  var out = [];
+  FACTORS.forEach(function (fc) {
+    var vals = peers.map(function (h) { return h[fc.k]; });
+    var m = mean(vals, function (x) { return x; }), sd = stdev(vals) || 1;
+    var score = fc.worse * (hop[fc.k] - m) / sd / 3;
+    if (score > 0.18) out.push({ f: fc, here: hop[fc.k], typical: median(vals), score: score,
+      strength: score > 0.6 ? 'Strong' : score > 0.35 ? 'Moderate' : 'Weak' });
+  });
+  if (hop.speedClass === 'Late brake' || hop.speedClass === 'Flat out' || hop.speedClass === 'Held') {
+    out.push({ f: { label: 'Typical driving pattern', role: 'opm', group: 'Movement',
+      what: 'Most runs here are classed as \u201c' + lower(hop.speedClass) + '\u201d, which uses more energy than coasting.' },
+      here: hop.speedClass, typical: null, score: 0.4, strength: 'Moderate' });
+  }
+  return out.map(function (c, i) { return { c: c, i: i }; }).sort(function (a, b) {
+    return b.c.score - a.c.score || a.i - b.i;
+  }).map(function (x) { return x.c; });
+}
+function contribPanel() {
+  var cs = contributors();
+  var roles = [];
+  cs.forEach(function (c) { if (c.strength !== 'Weak' && !inArr(roles, c.f.role)) roles.push(c.f.role); });
+  var body = cs.length ? '<div class="ctb-list">' + cs.map(function (c) {
+    var vals = typeof c.here === 'number'
+      ? X.fmt(c.here, c.f.dp) + c.f.unit + ' here' + SEP + X.fmt(c.typical, c.f.dp) + c.f.unit + ' typical on this line'
+      : esc(c.here);
+    return '<div class="ctb">' +
+      '<div class="ctb-main"><span class="ctb-name">' + esc(c.f.label) + '</span><span class="ctb-group">' + esc(c.f.group) + '</span>' +
+        '<span class="str str-' + lower(c.strength) + '">' + c.strength + '</span></div>' +
+      '<div class="ctb-vals mono">' + vals + '</div>' +
+      '<div class="ctb-what">' + esc(c.f.what) + '</div>' +
+      '<div class="ctb-owner">Best placed to check: ' + esc(R.personOf(c.f.role)) + (c.f.role === ctx.roleId ? ' (you)' : '') + '</div>' +
+    '</div>';
+  }).join('') + '</div>' : '<p class="cp-none">No single factor stands out from other ' + esc(lower(hop.direction)) + ' sections on this line.</p>';
+  var both = inArr(roles, 'opm') && inArr(roles, 'rse');
+  return panel({
+    id: 'contrib', att: null, pinned: true, span: true, q: 'What may be contributing?',
+    title: 'Compared with other ' + lower(hop.direction) + ' sections on the ' + lineName(hop.lineId),
+    tag: '<span class="cp-tag">' + R.smartTag('Proposal') + R.sref('S6') + '</span>',
+    why: cs.length ? 'The strongest signal is ' + lower(cs[0].f.label) + '.' : '',
+    body: body, svc: 'S6',
+    reading: cs.length
+      ? 'This is a proposal, not a verdict. ' + X.em(cs[0].f.label) + ' stands out most here. ' +
+        (both ? 'Both a movement factor and a train factor stand out, so ' + esc(R.personOf('opm')) + ' and ' + esc(R.personOf('rse')) + ' should look at it together.'
+              : 'The signals point to one area, so one specialist can take the first look.')
+      : 'Nothing stands out, so the cause may lie outside what this platform measures today, such as track condition or power supply.',
+    howto: 'Each factor compares this section with the other sections on the line in the same direction. Strong means it is well outside what is normal for the line; weak means it is only slightly outside.'
+  });
+}
+
+/* ------------------------------------------------------- panel ordering */
+var panels = [trendPanel()];
+if (chartLevel === 'network') panels = panels.concat([linePanel(), hourPanel(), trainPanel(), splitPanel()]);
+else if (chartLevel === 'line') panels = panels.concat([wherePanel(), hourPanel(), trainPanel(), patternPanel()]);
+else panels = panels.concat([contribPanel(), hourPanel()]);
+
+function orderPanels(list) {
+  var pref = PREF[ctx.roleId] || [];
+  return list.map(function (p, i) { return { p: p, i: i }; }).sort(function (a, b) {
+    var ra = a.p.att ? ATT[a.p.att].rank : 9, rb = b.p.att ? ATT[b.p.att].rank : 9;
+    var pa = pref.indexOf(a.p.id), pb = pref.indexOf(b.p.id);
+    pa = pa < 0 ? 99 : pa; pb = pb < 0 ? 99 : pb;
+    return ra - rb || pa - pb || a.i - b.i;
+  }).map(function (x) { return x.p; });
+}
+function panelsBlock() {
+  var pinned = panels.filter(function (p) { return p.pinned; });
+  var rest = orderPanels(panels.filter(function (p) { return !p.pinned; }));
+  var loud = rest.filter(function (p) { return !!p.att; }), quiet = rest.filter(function (p) { return !p.att; });
+  function html(l) { return l.map(function (p) { return p.html; }).join(''); }
+  return '<section class="cp-sec">' +
+    '<div class="sec-head"><h2>Where, when and why</h2>' +
+      '<p>Charts that need a look come first. Each one says what it shows and how to read it; select a bar to narrow the dashboard.</p></div>' +
+    '<div class="cp-grid">' + html(pinned) + html(loud) + '</div>' +
+    (quiet.length ? '<details class="quiet-group"><summary>Checked \u2014 no further signal (' + quiet.length + ')</summary>' +
+      '<div class="cp-grid">' + html(quiet) + '</div></details>' : '') +
+  '</section>';
+}
+
+/* ------------------------------------------------------------ references */
+function refSection() {
+  var dash = '\u2014';
+  function gapCell(v) { return v == null ? dash : esc(signed(pct(S.v, v))) + '%'; }
+  var rows = [
+    { id: 'expected', name: 'Expected', v: refs.expected, what: 'What comparable runs use in the same conditions.',
+      src: bl ? bl.label + SEP + bl.id + ' v' + bl.version : 'Each line\u2019s own baseline, weighted by energy' },
+    { id: 'achievable', name: 'Achievable', v: refs.achievable, what: 'What the best comparable runs already do.',
+      src: refs.achievable == null ? nullReason('achievable') : 'Best comparable runs, about ' + X.fmt((1 - REF.achievableRatio) * 100, 0) + '% below expected' },
+    { id: 'target', name: 'Target', v: refs.target, what: 'What the organisation has committed to.',
+      src: refs.target == null ? nullReason('target') : (owner.targetSource || '') + (owner.targetSetBy ? SEP + owner.targetSetBy : '') },
+    { id: 'alert', name: 'Alert threshold', v: refs.alert, what: 'How far above expected before the platform raises a finding.',
+      src: '+' + X.fmt(alertPct, 1) + '% over expected' + SEP + (hop ? REF.section.alertSource : owner.alertSource) }
+  ];
+  var table = '<table class="dt ref-tbl"><thead><tr><th>Reference</th><th>Value</th><th>Now against it</th><th>What it means</th><th>Source</th></tr></thead><tbody>' +
+    rows.map(function (r) {
+      return '<tr class="' + (r.id === cmp ? 'on' : '') + '"><td><strong>' + esc(r.name) + '</strong></td>' +
+        '<td class="mono">' + (r.v == null ? dash : fmt(r.v) + ' kWh/km') + '</td>' +
+        '<td class="mono">' + gapCell(r.v) + '</td>' +
+        '<td>' + esc(r.what) + '</td><td class="ref-src">' + esc(r.src) + '</td></tr>';
+    }).join('') + '</tbody></table>';
+
+  var rec = '', isEpm = ctx.roleId === 'epm';
+  function acceptBtn(key, label) {
+    return isEpm ? '<button type="button" class="btn-accept" data-accept="' + esc(key) + '">' + esc(label) + '</button>' : '';
+  }
+  function preview(list, now, next) {
+    return '<table class="dt rec-prev"><thead><tr><th>Alert at</th><th>Alerts last quarter</th><th>Became cases</th></tr></thead><tbody>' +
+      list.map(function (p) {
+        var tag = p.pct === now ? '<span class="pv-mark pv-now">Now</span>' : p.pct === next ? '<span class="pv-mark pv-rec">Recommended</span>' : '';
+        return '<tr class="' + (p.pct === next ? 'on' : '') + '"><td class="mono">+' + X.fmt(p.pct, 1) + '% ' + tag + '</td>' +
+          '<td class="mono">' + p.alerts + '</td><td class="mono">' + p.cases + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+  if (hop) {
+    rec = '<div class="rec"><div class="rec-head">Recommended for sections: +' + X.fmt(REF.section.recommendedPct, 1) +
+      '% <span class="rec-now">(now +' + X.fmt(alertPct, 1) + '%)</span></div><p>' + esc(REF.section.recommendWhy) + '</p>' +
+      acceptBtn('section:' + REF.section.recommendedPct, 'Accept +' + X.fmt(REF.section.recommendedPct, 1) + '% for sections') + '</div>';
+  } else if (L) {
+    var r = REF.lines[L.id];
+    rec = '<div class="rec"><div class="rec-head">' + (r.recommendedPct != null
+        ? 'Recommended alert for the ' + esc(lineName(L.id)) + ': +' + X.fmt(r.recommendedPct, 1) + '% <span class="rec-now">(now +' + X.fmt(r.alertPct, 1) + '%)</span>'
+        : 'No change recommended for the ' + esc(lineName(L.id))) + '</div>' +
+      '<p>' + esc(r.recommendWhy) + ' Week-to-week variation on this line is about ' + X.fmt(r.variabilityPct, 1) + '%.</p>' +
+      (r.preview ? '<div class="rec-sub">What each level would have raised last quarter</div>' + preview(r.preview, r.alertPct, r.recommendedPct) : '') +
+      (r.recommendedPct != null ? acceptBtn('line:' + L.id + ':' + r.recommendedPct, 'Accept +' + X.fmt(r.recommendedPct, 1) + '%') : '') + '</div>';
+  } else {
+    var recs = LINE_ORDER.filter(function (id) { return REF.lines[id].recommendedPct != null; });
+    rec = '<div class="rec"><div class="rec-head">Alert thresholds are recommended line by line</div>' +
+      '<p>Lines that vary little can use a tighter alert and catch problems sooner; noisy lines need a wider one so alerts stay meaningful.</p>' +
+      '<ul class="rec-list">' + recs.map(function (id) {
+        var lr = REF.lines[id];
+        return '<li><a class="cell-link" href="' + esc(url({ line: id })) + '#references">' + esc(lineName(id)) + '</a>: +' +
+          X.fmt(lr.recommendedPct, 1) + '% recommended (now +' + X.fmt(lr.alertPct, 1) + '%)</li>';
+      }).join('') + '</ul></div>';
+  }
+  if (st.fleet !== 'All' && REF.fleets[st.fleet]) {
+    var fr = REF.fleets[st.fleet];
+    rec += '<div class="rec"><div class="rec-head">' + (fr.recommendedIndex != null
+        ? 'Recommended train alert for the ' + esc(st.fleet) + ': index ' + fr.recommendedIndex + ' <span class="rec-now">(now ' + fr.alertIndex + ')</span>'
+        : 'No change recommended for the ' + esc(st.fleet) + ' train alert (index ' + fr.alertIndex + ')') + '</div>' +
+      '<p>' + esc(fr.recommendWhy) + '</p>' +
+      (fr.recommendedIndex != null ? acceptBtn('fleet:' + st.fleet + ':' + fr.recommendedIndex, 'Accept index ' + fr.recommendedIndex) : '') + '</div>';
+  }
+  var who = isEpm ? '<p class="rec-who" id="rec-status">You can accept a recommendation. The platform never changes a threshold on its own.</p>'
+    : '<p class="rec-who">Recommendations are accepted by ' + esc(R.personOf('epm')) + '. The platform never changes a threshold on its own.</p>';
+  return '<section class="panel mb-6" id="references">' +
+    '<div class="panel-head"><div><div class="panel-title">What this scope is judged against</div>' +
+      '<div class="panel-sub">Four references, each answering a different question. The highlighted row is the one the dashboard is comparing with.</div></div>' +
+      '<div class="panel-actions">' + R.sref('S2') + '</div></div>' +
+    '<div class="panel-body">' + table + '<div class="rec-grid">' + rec + '</div>' + who +
+      (can('references') ? '<p class="mt-2"><a class="cell-link" href="references.html">All references and thresholds</a></p>' : '') +
+    '</div></section>';
+}
+
+/* ------------------------------------------------------------ confidence */
+var COV_LABEL = { movement: 'Train movement', metering: 'Substation metering', timetable: 'Timetable', fleet: 'Which train ran' };
+var BL_TYPE = { 'matched-run-decile': 'Matched runs', 'historical-self': 'Own history only' };
+function covFor(ids) {
+  var out = {};
+  ['movement', 'metering', 'timetable', 'fleet'].forEach(function (k) {
+    out[k] = Math.round(mean(ids, function (id) { return N.COVERAGE[id][k]; }));
+  });
+  return out;
+}
+function raiseIdeas(ids) {
+  var out = [];
+  ids.forEach(function (id) {
+    var l = N.lineById(id), b = Q.baselineById(l.baselineId), c = N.COVERAGE[id], nm = lineName(id);
+    if (b && b.type === 'historical-self') out.push('Build a matched-run baseline for the ' + nm + ', so it is compared with similar runs rather than its own history.');
+    if (b && b.comparability && b.comparability.score === 'medium') out.push('Split the ' + nm + ' baseline by fleet, so mixed running is compared like for like.');
+    if (c.metering < 90) out.push('Close the gaps in substation metering on the ' + nm + ' (' + c.metering + '% of runs today).');
+    if (c.fleet < 85) out.push('Record which train ran each service on the ' + nm + ' (' + c.fleet + '% of runs today).');
+  });
+  if (focus && focus.weeks < 3) out.unshift('More weeks of data. This finding has ' + R.plural(focus.weeks, 'week', 'weeks') + ' so far.');
+  return out;
+}
+function confSection() {
+  var ids = L ? [L.id] : LINE_ORDER.filter(function (id) { return lineRunsFleet(id, st.fleet); });
+  var cov = covFor(ids);
+  var covHtml = '<div class="cov">' + ['movement', 'metering', 'timetable', 'fleet'].map(function (k) {
+    return '<div class="cov-row"><span class="cov-label">' + esc(COV_LABEL[k]) + '</span>' +
+      '<span class="cov-track"><span class="cov-fill' + (cov[k] < 90 ? ' cov-warn' : '') + '" style="width:' + cov[k] + '%"></span></span>' +
+      '<span class="cov-val mono">' + cov[k] + '%</span></div>';
+  }).join('') + '</div>';
+  var blHtml;
+  if (bl) {
+    blHtml = '<div class="bl-card"><div class="bl-name">' + esc(bl.label) + '</div>' +
+      '<div class="bl-meta mono">' + esc(bl.id) + ' v' + esc(String(bl.version)) + SEP + esc(BL_TYPE[bl.type] || bl.type) + SEP +
+        X.fmtInt(bl.sampleRuns) + ' runs' + SEP + esc(bl.comparability.score) + ' comparability</div>' +
+      '<p>' + esc(bl.method) + '</p></div>';
+  } else {
+    blHtml = '<table class="dt"><thead><tr><th>Line</th><th>Compared with</th><th>Confidence</th></tr></thead><tbody>' +
+      ids.map(function (id) {
+        var b = Q.baselineById(N.lineById(id).baselineId), r = REF.lines[id];
+        return '<tr><td><a class="cell-link" href="' + esc(url({ line: id })) + '#confidence">' + esc(lineName(id)) + '</a></td>' +
+          '<td>' + esc(b ? BL_TYPE[b.type] || b.type : '') + '</td><td>' + X.conf(r.confidence, r.confidenceWhy) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+  var ideas = raiseIdeas(ids);
+  return '<section class="panel mb-6" id="confidence">' +
+    '<div class="panel-head"><div><div class="panel-title">How sure the platform is</div>' +
+      '<div class="panel-sub">' + X.conf(confLevel, confWhy) + ' ' + esc(confWhy) + '</div></div>' +
+      '<div class="panel-actions">' + R.sref('S4') + '</div></div>' +
+    '<div class="panel-body"><div class="conf-grid">' +
+      '<div><div class="rec-sub">' + (bl ? 'Baseline' : 'Baselines by line') + '</div>' + blHtml + '</div>' +
+      '<div><div class="rec-sub">Data behind this scope</div>' + covHtml +
+        '<p class="conf-note">Energy is ' + X.estTag() + ' from train movement and calibrated against substation metering.</p></div>' +
+      '<div><div class="rec-sub">What would raise confidence</div>' +
+        (ideas.length ? '<ul class="rec-list">' + ideas.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>'
+          : '<p class="conf-note">Nothing pressing. Confidence is limited mainly by normal week-to-week variation.</p>') +
+        '<p class="conf-note"><strong>High</strong> means a strong like-for-like baseline and complete data. <strong>Medium</strong> means the comparison is less precise. <strong>Low</strong> means treat the number as a prompt to look, not a conclusion.</p>' +
+      '</div>' +
+    '</div></div></section>';
+}
+
+/* --------------------------------------------------------- findings table */
+function findingsTable() {
+  var list = focus ? [focus].concat(findingsHere) : findingsHere;
+  if (!list.length) return '';
+  return '<section class="panel mb-6" id="deviations">' +
+    '<div class="panel-head"><div><div class="panel-title">All findings ' + (focus ? 'on the ' + esc(lineName(L.id)) : level === 'network' ? 'on the network' : 'in this scope') + ' (' + list.length + ')</div>' +
+      '<div class="panel-sub">Only differences that persist, have enough runs and a usable baseline become findings. Smaller ones are held and watched.</div></div>' +
+      '<div class="panel-actions">' + R.sref('S1') + '</div></div>' +
+    '<div class="panel-body flush"><table class="dt"><thead><tr><th>Finding</th><th>Type</th><th>Confidence</th><th>Against expected</th><th>A year</th><th></th></tr></thead><tbody>' +
+      list.map(function (d) {
+        var a = ATT[d.attention];
+        return '<tr class="' + (focus && d.id === focus.id ? 'on' : '') + '">' +
+          '<td><a class="cell-link" href="' + href({ finding: d.id }) + '">' + esc(d.finding) + '</a><div class="dt-sub mono">' + esc(d.id) + SEP + esc(lineName(d.lineId)) + '</div></td>' +
+          '<td><span class="att-pill att-pill-' + a.cls + '">' + esc(a.label) + '</span></td>' +
+          '<td>' + X.conf(d.confidence, d.limitedBy) + '</td>' +
+          '<td class="mono">' + esc(signed(pct(d.kwhPerKm, d.baseline))) + '%</td>' +
+          '<td class="mono">' + esc(mwhTxt(d.annualMWh)) + '</td>' +
+          '<td>' + actionFor(d) + '</td></tr>';
+      }).join('') + '</tbody></table></div></section>';
+}
+
+/* --------------------------------------------------------------- render */
+main.innerHTML = scopeBar() +
+  '<div class="dash">' + focusBanner() + statusBlock() + kpiTiles() + attentionBlock() + panelsBlock() +
+    refSection() + confSection() + findingsTable() + '</div>';
+
+var raisers = document.querySelectorAll('[data-raise]');
+for (var ri = 0; ri < raisers.length; ri++) {
+  (function (b) {
+    b.addEventListener('click', function () {
+      var d = devById(b.getAttribute('data-raise'));
+      if (d && H.raise) H.raise.open(d);
+    });
+  })(raisers[ri]);
+}
+var accepts = document.querySelectorAll('[data-accept]');
+for (var ai = 0; ai < accepts.length; ai++) {
+  (function (b) {
+    b.addEventListener('click', function () {
+      var p = String(b.getAttribute('data-accept')).split(':');
+      var what = p[0] === 'line' ? 'New alerts on the ' + lineName(p[1]) + ' will use +' + X.fmt(Number(p[2]), 1) + '%'
+        : p[0] === 'fleet' ? 'New ' + p[1] + ' train alerts will use index ' + p[2]
+        : 'New section alerts will use +' + X.fmt(Number(p[1]), 1) + '%';
+      var s = document.getElementById('rec-status');
+      if (s) s.textContent = 'Accepted. ' + what + ' from next week. Recorded against ' + R.personOf('epm') + '.';
+      b.disabled = true;
+      b.textContent = 'Accepted';
+    });
+  })(accepts[ai]);
+}
 })();
 </script>
 </body>

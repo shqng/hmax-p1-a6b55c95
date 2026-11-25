@@ -25,6 +25,7 @@ var ICONS = {
   gavel:    '<path d="M14 4l6 6"/><path d="M11 7 8 4 2 10l3 3Z"/><path d="M17 13l-3-3-6 6 3 3Z"/><path d="M13 20h9"/>',
   ledger:   '<path d="M4 4h13a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3Z"/><path d="M4 17h16"/><path d="M9 8h7"/>',
   database: '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  sliders:  '<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
   cog:      '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'
 };
 
@@ -241,9 +242,9 @@ function wireSearch() {
    reader never has to reconstruct how the parts relate. */
 
 var RAIL_PHASE = {
-  overview: 'measure', explore: 'measure', runs: 'measure', fleet: 'measure',
+  overview: 'measure', runs: 'measure', fleet: 'measure',
   caseload: 'spine', 'case': 'spine', decisions: 'spine', portfolio: 'spine',
-  ledger: 'result', trust: null, admin: null
+  ledger: 'result', trust: null, references: null, admin: null
 };
 
 function railStageCounts() {

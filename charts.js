@@ -59,59 +59,179 @@ function txt(x, y, s, size, colour, anchor, weight) {
 /* --------------------------------------------------------------- 1. SERIES
    A measured series against its baseline. The area between them is the point
    of the chart, so it is filled rather than left to be inferred.
-   opts: {height, yLabel, baselineLabel, valueLabel, dp, invert}
+   opts: {height, yLabel, dp, colour,
+          band        fraction either side of expected treated as normal; the
+                      upper edge is the alert threshold
+          target      horizontal commitment line
+          achievable  horizontal best-comparable line
+          markers     [{i, label, kind}] events drawn as vertical rules
+          ci          fraction of uncertainty drawn around the measured line
+          shade       trailing points belonging to the selected period
+          annotate    {i, text} label written next to a point
+          tip         function (d, i) returning a tooltip string}
+   A null value is a gap in the record and is drawn as one, never joined.
    ----------------------------------------------------------------------- */
+
+var MARK_TONE = { change: 'var(--text-secondary)', changepoint: 'var(--red)', intervention: 'var(--green)',
+                  disruption: 'var(--amber)', gap: 'var(--text-tertiary)' };
 
 function series(data, opts) {
   opts = opts || {};
-  var W = 640, Hh = opts.height || 190;
-  var padL = 40, padR = 12, padT = 14, padB = 26;
+  var band = opts.band || 0, ci = opts.ci || 0;
+  var marks = opts.markers || [];
+  var hasRight = band || opts.target != null || opts.achievable != null;
+  var W = opts.width || 640, Hh = opts.height || 190;
+  var padL = 40, padR = hasRight ? 78 : 12, padT = marks.length ? 30 : 14, padB = 26;
   var iw = W - padL - padR, ih = Hh - padT - padB;
+  var dp = opts.dp == null ? 2 : opts.dp;
 
   var vals = [];
-  data.forEach(function (d) { vals.push(d.value); if (d.baseline != null) vals.push(d.baseline); });
+  data.forEach(function (d) {
+    if (d.value != null) {
+      vals.push(d.value);
+      if (ci) { vals.push(d.value * (1 + ci)); vals.push(d.value * (1 - ci)); }
+    }
+    if (d.baseline != null) {
+      vals.push(d.baseline);
+      if (band) { vals.push(d.baseline * (1 + band)); vals.push(d.baseline * (1 - band)); }
+    }
+  });
+  if (opts.target != null) vals.push(opts.target);
+  if (opts.achievable != null) vals.push(opts.achievable);
   var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
   var span = (hi - lo) || 1;
-  lo -= span * 0.35; hi += span * 0.25;
+  lo -= span * (band ? 0.12 : 0.35); hi += span * (band ? 0.12 : 0.25);
 
   function X(i) { return padL + (data.length === 1 ? iw / 2 : (i / (data.length - 1)) * iw); }
   function Y(v) { return padT + ih - ((v - lo) / (hi - lo)) * ih; }
+  var step = data.length > 1 ? iw / (data.length - 1) : iw;
+
+  /* Contiguous runs of measured values, so a gap stays a gap. */
+  var runs = [], cur = [], i;
+  for (i = 0; i < data.length; i++) {
+    if (data[i].value == null) { if (cur.length) runs.push(cur); cur = []; }
+    else cur.push(i);
+  }
+  if (cur.length) runs.push(cur);
 
   var s = '';
-  var ticks = 4, i;
+  if (opts.shade && opts.shade < data.length) {
+    var sx = X(data.length - opts.shade) - step / 2;
+    s += '<rect x="' + sx + '" y="' + padT + '" width="' + (padL + iw - sx + 4) + '" height="' + ih +
+      '" fill="var(--bg-elev-2)"/>';
+    s += txt(padL + iw, padT + ih - 4, 'selected period', 8, C.axis, 'end');
+  }
+
+  var ticks = 4;
   for (i = 0; i <= ticks; i++) {
     var tv = lo + ((hi - lo) / ticks) * i, ty = Y(tv);
-    s += '<line x1="' + padL + '" y1="' + ty + '" x2="' + (W - padR) + '" y2="' + ty +
+    s += '<line x1="' + padL + '" y1="' + ty + '" x2="' + (padL + iw) + '" y2="' + ty +
       '" stroke="' + C.grid + '" stroke-width="1"/>';
-    s += txt(padL - 7, ty + 3, fmt(tv, opts.dp == null ? 2 : opts.dp), 9, C.axis, 'end');
+    s += txt(padL - 7, ty + 3, fmt(tv, dp), 9, C.axis, 'end');
   }
 
+  var rl = [];
   var hasBase = data[0] && data[0].baseline != null;
+  var last = data[data.length - 1];
+  var lastBase = last && last.baseline != null ? last.baseline : null;
+
+  if (hasBase && band) {
+    var bp = [], j;
+    for (j = 0; j < data.length; j++) bp.push(X(j) + ',' + Y(data[j].baseline * (1 + band)));
+    for (j = data.length - 1; j >= 0; j--) bp.push(X(j) + ',' + Y(data[j].baseline * (1 - band)));
+    s += '<polygon points="' + bp.join(' ') + '" fill="rgba(76,87,105,.08)"/>';
+    s += '<polyline points="' + data.map(function (d, k) { return X(k) + ',' + Y(d.baseline * (1 + band)); }).join(' ') +
+      '" fill="none" stroke="var(--amber)" stroke-width="1" stroke-dasharray="2 3" opacity=".75"/>';
+    rl.push({ y: Y(lastBase * (1 + band)), t: 'Alert +' + fmt(band * 100, 1) + '%', c: 'var(--amber)' });
+  }
+
   if (hasBase) {
-    var poly = [], j;
-    for (j = 0; j < data.length; j++) poly.push(X(j) + ',' + Y(data[j].value));
-    for (j = data.length - 1; j >= 0; j--) poly.push(X(j) + ',' + Y(data[j].baseline));
-    var over = data[data.length - 1].value > data[data.length - 1].baseline;
-    s += '<polygon points="' + poly.join(' ') + '" fill="' +
-      (over ? 'rgba(245,185,92,.13)' : 'rgba(94,234,212,.10)') + '"/>';
+    runs.forEach(function (r) {
+      if (r.length < 2) return;
+      var poly = [];
+      r.forEach(function (k) { poly.push(X(k) + ',' + Y(data[k].value)); });
+      for (var q = r.length - 1; q >= 0; q--) poly.push(X(r[q]) + ',' + Y(data[r[q]].baseline));
+      var lastV = data[r[r.length - 1]];
+      var over = lastV.value > lastV.baseline;
+      s += '<polygon points="' + poly.join(' ') + '" fill="' +
+        (over ? 'rgba(245,185,92,' + (band ? '.10' : '.13') + ')' : 'rgba(94,234,212,.10)') + '"/>';
+    });
     s += '<polyline points="' + data.map(function (d, k) { return X(k) + ',' + Y(d.baseline); }).join(' ') +
       '" fill="none" stroke="' + C.base + '" stroke-width="1.4" stroke-dasharray="4 3"/>';
+    if (hasRight) rl.push({ y: Y(lastBase), t: 'Expected', c: C.axis });
   }
 
-  s += '<polyline points="' + data.map(function (d, k) { return X(k) + ',' + Y(d.value); }).join(' ') +
-    '" fill="none" stroke="' + (opts.colour || C.key) + '" stroke-width="2" stroke-linejoin="round"/>';
+  if (opts.target != null) {
+    s += '<line x1="' + padL + '" y1="' + Y(opts.target) + '" x2="' + (padL + iw) + '" y2="' + Y(opts.target) +
+      '" stroke="var(--blue)" stroke-width="1.3" stroke-dasharray="1 3" stroke-linecap="round"/>';
+    rl.push({ y: Y(opts.target), t: 'Target ' + fmt(opts.target, dp), c: 'var(--blue)' });
+  }
+  if (opts.achievable != null) {
+    s += '<line x1="' + padL + '" y1="' + Y(opts.achievable) + '" x2="' + (padL + iw) + '" y2="' + Y(opts.achievable) +
+      '" stroke="var(--green)" stroke-width="1.3" stroke-dasharray="1 3" stroke-linecap="round"/>';
+    rl.push({ y: Y(opts.achievable), t: 'Achievable ' + fmt(opts.achievable, dp), c: 'var(--green)' });
+  }
 
-  data.forEach(function (d, k) {
-    var last = k === data.length - 1;
-    s += '<circle cx="' + X(k) + '" cy="' + Y(d.value) + '" r="' + (last ? 3.6 : 2.1) + '" fill="' +
-      (opts.colour || C.key) + '"/>';
-    if (k % Math.ceil(data.length / 8) === 0 || last) {
-      s += txt(X(k), Hh - 8, d.week || d.label || k, 9, C.axis);
-    }
+  if (ci) {
+    runs.forEach(function (r) {
+      if (r.length < 2) return;
+      var poly = [];
+      r.forEach(function (k) { poly.push(X(k) + ',' + Y(data[k].value * (1 + ci))); });
+      for (var q = r.length - 1; q >= 0; q--) poly.push(X(r[q]) + ',' + Y(data[r[q]].value * (1 - ci)));
+      s += '<polygon points="' + poly.join(' ') + '" fill="' + (opts.colour || C.key) + '" opacity=".09"/>';
+    });
+  }
+
+  marks.forEach(function (m, n) {
+    if (m.i == null || m.i < 0 || m.i >= data.length) return;
+    var tone = MARK_TONE[m.kind] || C.ink;
+    s += '<line x1="' + X(m.i) + '" y1="' + (padT - 2) + '" x2="' + X(m.i) + '" y2="' + (padT + ih) +
+      '" stroke="' + tone + '" stroke-width="1" stroke-dasharray="3 3" opacity=".8"/>';
+    s += txt(X(m.i), n % 2 ? padT - 6 : padT - 17, m.label, 8.5, tone, 'middle', 600);
   });
 
-  if (opts.yLabel) s += txt(padL - 7, padT - 4, opts.yLabel, 8.5, C.axis, 'end', 600);
-  return svgWrap(W, Hh, s);
+  runs.forEach(function (r) {
+    s += '<polyline points="' + r.map(function (k) { return X(k) + ',' + Y(data[k].value); }).join(' ') +
+      '" fill="none" stroke="' + (opts.colour || C.key) + '" stroke-width="2" stroke-linejoin="round"/>';
+  });
+
+  data.forEach(function (d, k) {
+    var isLast = k === data.length - 1;
+    if (k % Math.ceil(data.length / 8) === 0 || isLast) {
+      s += txt(X(k), Hh - 8, d.week || d.label || k, 9, C.axis);
+    }
+    if (d.value == null) {
+      s += '<rect x="' + (X(k) - step * 0.3) + '" y="' + padT + '" width="' + (step * 0.6) + '" height="' + ih +
+        '" fill="url(#gapHatch)" opacity=".9"/>';
+      s += txt(X(k), padT + ih / 2, 'no data', 8, C.axis, 'middle', 600);
+      return;
+    }
+    var out = band && d.baseline != null && d.value > d.baseline * (1 + band);
+    var colour = out ? C.warn : (opts.colour || C.key);
+    var tip = opts.tip ? opts.tip(d, k) :
+      (d.week || d.label || '') + ' \u00b7 ' + fmt(d.value, dp) +
+      (d.baseline != null ? ' \u00b7 expected ' + fmt(d.baseline, dp) + ' (' +
+        (d.value >= d.baseline ? '+' : '\u2212') + fmt(Math.abs(d.value - d.baseline) / d.baseline * 100, 1) + '%)' : '') +
+      (out ? ' \u00b7 above alert' : '');
+    s += '<g><title>' + esc(tip) + '</title>' +
+      '<circle cx="' + X(k) + '" cy="' + Y(d.value) + '" r="' + (isLast ? 3.6 : out ? 3 : 2.1) + '" fill="' + colour + '"/>' +
+      '<circle cx="' + X(k) + '" cy="' + Y(d.value) + '" r="9" fill="transparent"/></g>';
+  });
+
+  if (opts.annotate && data[opts.annotate.i] && data[opts.annotate.i].value != null) {
+    var ad = data[opts.annotate.i];
+    s += txt(X(opts.annotate.i) - 6, Y(ad.value) - 8, opts.annotate.text, 9.5, opts.annotate.tone ? toneColour(opts.annotate.tone) : C.warn, 'end', 700);
+  }
+
+  /* Right-edge labels are pushed apart so close references stay legible. */
+  rl.sort(function (a, b) { return a.y - b.y; });
+  for (i = 1; i < rl.length; i++) if (rl[i].y - rl[i - 1].y < 11) rl[i].y = rl[i - 1].y + 11;
+  rl.forEach(function (l) { s += txt(padL + iw + 6, l.y + 3, l.t, 8.5, l.c, 'start', 600); });
+
+  if (opts.yLabel) s += txt(4, Math.max(9, padT - 12), opts.yLabel, 8.5, C.axis, 'start', 600);
+  var defs = '<defs><pattern id="gapHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+    '<line x1="0" y1="0" x2="0" y2="5" stroke="var(--border)" stroke-width="2"/></pattern></defs>';
+  return svgWrap(W, Hh, defs + s);
 }
 
 /* ------------------------------------------------------------ 2. SPARKLINE
@@ -164,7 +284,9 @@ function rankedBars(items, opts) {
           : '<div class="rb-delta"></div>') +
         (d.flag ? '<span class="rb-flag">' + esc(d.flag) + '</span>' : '<span class="rb-flag"></span>') +
       '</div>';
-    return d.href ? '<a class="rb-link" href="' + esc(d.href) + '">' + body + '</a>' : body;
+    var tt = d.title ? ' title="' + esc(d.title) + '"' : '';
+    return d.href ? '<a class="rb-link" href="' + esc(d.href) + '"' + tt + '>' + body + '</a>' :
+      (tt ? '<div' + tt + '>' + body + '</div>' : body);
   }).join('') + '</div>';
 }
 
@@ -199,13 +321,17 @@ function columns(items, opts) {
     var x = padL + k * bw;
     var y = padT + ih - ((d.value - min) / (max - min)) * ih;
     var h = padT + ih - y;
-    s += '<rect x="' + (x + bw * 0.16) + '" y="' + y + '" width="' + (bw * 0.68) + '" height="' + Math.max(h, 1) +
+    var bar = '<rect x="' + (x + bw * 0.16) + '" y="' + y + '" width="' + (bw * 0.68) + '" height="' + Math.max(h, 1) +
       '" fill="' + toneColour(d.tone) + '" opacity="' + (d.dim ? 0.4 : 0.9) + '" rx="1.5"/>';
     if (d.baseline != null) {
       var by = padT + ih - ((d.baseline - min) / (max - min)) * ih;
-      s += '<line x1="' + (x + bw * 0.1) + '" y1="' + by + '" x2="' + (x + bw * 0.9) + '" y2="' + by +
+      bar += '<line x1="' + (x + bw * 0.1) + '" y1="' + by + '" x2="' + (x + bw * 0.9) + '" y2="' + by +
         '" stroke="' + C.base + '" stroke-width="1.3" stroke-dasharray="3 2"/>';
     }
+    /* Full-height hit area so a short bar is still easy to point at. */
+    bar += '<rect x="' + x + '" y="' + padT + '" width="' + bw + '" height="' + ih + '" fill="transparent"/>';
+    if (d.title) bar = '<title>' + esc(d.title) + '</title>' + bar;
+    s += d.href ? '<a class="col-link" href="' + esc(d.href) + '">' + bar + '</a>' : '<g>' + bar + '</g>';
     if (d.label && (items.length <= 14 || k % Math.ceil(items.length / 12) === 0)) {
       s += txt(x + bw / 2, Hh - 8, d.label, 8.5, C.axis);
     }
@@ -446,11 +572,93 @@ function note(html, serviceId) {
 }
 function em(s) { return '<strong style="color:var(--text-primary);font-weight:600">' + esc(String(s)) + '</strong>'; }
 
+/* ------------------------------------------------------------ 12. BULLET
+   One KPI against every reference it is judged by: the normal range around
+   expected, the alert edge, the target and the best comparable. The scale is
+   fitted to the references so the position of the bar is the message.
+   o: {value, expected, band, target, achievable, dp}
+   ----------------------------------------------------------------------- */
+
+function bullet(o) {
+  var dp = o.dp == null ? 2 : o.dp, band = o.band || 0;
+  var pts = [o.value, o.expected * (1 + band), o.expected * (1 - band)];
+  if (o.target != null) pts.push(o.target);
+  if (o.achievable != null) pts.push(o.achievable);
+  var lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts);
+  var pad = (hi - lo) * 0.18 || 0.1;
+  lo -= pad; hi += pad;
+  function P(v) { return ((v - lo) / (hi - lo) * 100).toFixed(1); }
+  var alert = o.expected * (1 + band);
+  var tone = o.value > alert ? 'bad' : o.value > o.expected ? 'warn' : 'good';
+  function tick(cls, v, t) {
+    return '<span class="bl-tick ' + cls + '" style="left:' + P(v) + '%" title="' + esc(t) + '"></span>';
+  }
+  return '<div class="bl">' +
+    '<div class="bl-track">' +
+      (band ? '<span class="bl-band" style="left:' + P(o.expected * (1 - band)) + '%;width:' +
+        (P(alert) - P(o.expected * (1 - band))).toFixed(1) + '%" title="Normal range"></span>' : '') +
+      '<span class="bl-bar bl-' + tone + '" style="width:' + P(o.value) + '%"></span>' +
+      tick('bl-exp', o.expected, 'Expected ' + fmt(o.expected, dp)) +
+      (band ? tick('bl-alert', alert, 'Alert ' + fmt(alert, dp)) : '') +
+      (o.target != null ? tick('bl-tgt', o.target, 'Target ' + fmt(o.target, dp)) : '') +
+      (o.achievable != null ? tick('bl-ach', o.achievable, 'Achievable ' + fmt(o.achievable, dp)) : '') +
+    '</div>' +
+    '<div class="bl-key">' +
+      '<span><i class="k-exp"></i>Expected ' + fmt(o.expected, dp) + '</span>' +
+      (o.target != null ? '<span><i class="k-tgt"></i>Target ' + fmt(o.target, dp) + '</span>' : '') +
+      (o.achievable != null ? '<span><i class="k-ach"></i>Achievable ' + fmt(o.achievable, dp) + '</span>' : '') +
+      (band ? '<span><i class="k-alert"></i>Alert ' + fmt(alert, dp) + '</span>' : '') +
+    '</div>' +
+  '</div>';
+}
+
+/* ------------------------------------------------------- 13. CONFIDENCE
+   Three dots, filled to the level, with the reason on hover. Shown beside
+   every number that a decision could be taken on.
+   ----------------------------------------------------------------------- */
+
+function conf(level, why) {
+  var n = level === 'high' ? 3 : level === 'medium' ? 2 : 1;
+  var label = level === 'high' ? 'High' : level === 'medium' ? 'Medium' : 'Low';
+  return '<span class="cdots cdots-' + esc(level) + '"' + (why ? ' title="' + esc(why) + '"' : '') + '>' +
+    '<i class="' + (n >= 1 ? 'on' : '') + '"></i><i class="' + (n >= 2 ? 'on' : '') + '"></i><i class="' + (n >= 3 ? 'on' : '') + '"></i>' +
+    '<span>' + label + ' confidence</span></span>';
+}
+
+function estTag() {
+  return '<span class="est-tag" title="Traction energy is modelled from train movement and calibrated against substation metering. It is an estimate, not a meter reading.">Estimated</span>';
+}
+
+/* ------------------------------------------------------------ 14. KEY
+   The shared visual grammar, written once so every chart's legend uses the
+   same words for the same marks.
+   ----------------------------------------------------------------------- */
+
+var KEY = {
+  measured:   ['k-meas', 'Measured'],
+  expected:   ['k-exp', 'Expected'],
+  band:       ['k-band', 'Normal range'],
+  alert:      ['k-alert', 'Alert threshold'],
+  target:     ['k-tgt', 'Target'],
+  achievable: ['k-ach', 'Achievable'],
+  event:      ['k-evt', 'Event'],
+  gap:        ['k-gap', 'No data'],
+  period:     ['k-per', 'Selected period']
+};
+
+function key(list) {
+  return '<div class="vkey">' + list.map(function (k) {
+    var e = KEY[k];
+    return e ? '<span><i class="' + e[0] + '"></i>' + e[1] + '</span>' : '';
+  }).join('') + '</div>';
+}
+
 H.charts = {
   series: series, sparkline: sparkline, rankedBars: rankedBars, columns: columns,
   runProfile: runProfile, stack: stack, scatter: scatter, heatmap: heatmap,
   gauge: gauge, delta: delta, note: note, em: em, toneColour: toneColour,
-  fmt: fmt, fmtInt: fmtInt
+  fmt: fmt, fmtInt: fmtInt,
+  bullet: bullet, conf: conf, estTag: estTag, key: key
 };
 
 })(this);

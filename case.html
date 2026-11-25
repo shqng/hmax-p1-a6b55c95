@@ -584,9 +584,8 @@
       label: ctx.hop.label,
       sub: 'Interstation \u00b7 ' + ctx.hop.kwhPerKm.toFixed(2) + ' against ' + ctx.hop.baseline.toFixed(2) +
            ' kWh/km over ' + ctx.hop.runs + ' runs',
-      href: 'explore.html?line=' + ctx.hop.lineId + '&dir=' + encodeURIComponent(ctx.hop.direction) +
-            '&view=location&hop=' + ctx.hop.id,
-      where: 'Analysis'
+      href: 'overview.html?hop=' + ctx.hop.id,
+      where: 'Energy performance'
     });
   }
   if (ctx && ctx.runs.length) {

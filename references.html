@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+<title>HMAX · References and thresholds</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="vendor/tailwind.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared.css">
+<link rel="stylesheet" href="charts.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main style="min-width:0">
+    <div id="topbar"></div>
+    <div id="main" class="px-8 py-7"></div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="network.js"></script>
+<script src="render.js"></script>
+<script src="charts.js"></script>
+<script src="shell.js"></script>
+<script src="raise.js"></script>
+<script>
+/* References and thresholds: the four things every number on Energy
+   performance is judged against, where each comes from, and the alert levels
+   the platform recommends. A person accepts a recommendation; nothing changes
+   on its own. */
+(function () {
+var H = window.HMAX, R = H.render, N = H.net, X = H.charts, esc = R.esc;
+var ctx = H.shell.mount({ workspace: 'references', crumb: 'Govern', title: 'References and thresholds' });
+if (!ctx) return;
+var main = document.getElementById('main');
+
+var REF = N.REFERENCES, SEP = ' \u00b7 ', DASH = '\u2014', ARROW = ' \u2192 ';
+var LINE_ORDER = ['L1', 'L2', 'L3', 'L4'];
+var FLEETS = ['A-series', 'B-series', 'C-series'];
+var isEpm = ctx.roleId === 'epm';
+var epmName = R.personOf('epm');
+
+function can(ws) { return ctx.role.nav.indexOf(ws) > -1; }
+function lineName(id) { var l = R.lineOf(id); return l ? l.name : id; }
+function fmt(n) { return X.fmt(n, 2); }
+function pctTxt(n) { return '+' + X.fmt(n, 1) + '%'; }
+function signed(n) {
+  var r = Number(Math.abs(n).toFixed(1));
+  return (r === 0 ? '' : n > 0 ? '+' : '\u2212') + X.fmt(r, 1) + '%';
+}
+function gap(v, ref) { return (v - ref) / ref * 100; }
+function mean(a, f) {
+  var s = 0;
+  a.forEach(function (x) { s += f(x); });
+  return a.length ? s / a.length : 0;
+}
+function dash(line, extra) {
+  var q = ['line=' + line];
+  if (extra) q.push(extra);
+  return 'overview.html?' + q.join('&');
+}
+function fleetRatio(lineId, fleet) {
+  var all = N.UNITS.filter(function (u) { return u.line === lineId; });
+  var fu = all.filter(function (u) { return u.fleet === fleet; });
+  if (!all.length || !fu.length) return { v: 1, e: 1 };
+  return { v: mean(fu, function (u) { return u.kwhPerKm; }) / mean(all, function (u) { return u.kwhPerKm; }),
+           e: mean(fu, function (u) { return u.baseline; }) / mean(all, function (u) { return u.baseline; }) };
+}
+
+/* ---------------------------------------------------- the four references */
+function defsBlock() {
+  var defs = [
+    { k: 'k-exp', name: 'Expected', q: 'Is this normal for these conditions?',
+      how: 'Built from comparable runs: same line, direction, service band and fleet. Rebuilt monthly, and every version is kept so past results never change.',
+      own: 'Maintained by ' + R.personOf('analyst') },
+    { k: 'k-ach', name: 'Achievable', q: 'How good could it be?',
+      how: 'The best comparable runs already being driven today, about ' + X.fmt((1 - REF.achievableRatio) * 100, 0) + '% below expected. It is a level the railway has shown it can reach.',
+      own: 'Derived from the same baseline' },
+    { k: 'k-tgt', name: 'Target', q: 'Are we on track for what we committed to?',
+      how: 'The level written into the ' + REF.network.targetSource + ', set for the network and for each line. Sections and trains do not carry their own target.',
+      own: 'Set by the ' + REF.network.targetSetBy },
+    { k: 'k-alert', name: 'Alert threshold', q: 'When should someone take a look?',
+      how: 'How far above expected before the platform raises a finding. Routes use a percentage; trains use an index against their own fleet, where 100 is typical.',
+      own: 'Recommended by the platform, accepted by ' + epmName }
+  ];
+  return '<section class="mb-6">' +
+    '<div class="sec-head"><h2>Four references</h2><p>Each answers a different question, so a number is never judged against just one.</p></div>' +
+    '<div class="rd-grid">' + defs.map(function (d) {
+      return '<div class="rd"><div class="rd-name"><span class="bl-key"><span><i class="' + d.k + '"></i></span></span>' + esc(d.name) + '</div>' +
+        '<div class="rd-q">' + esc(d.q) + '</div><p>' + esc(d.how) + '</p><div class="rd-own">' + esc(d.own) + '</div></div>';
+    }).join('') + '</div></section>';
+}
+
+/* ------------------------------------------------------ line x fleet table */
+function matrixBlock() {
+  var head = '<tr><th>Line</th><th>Expected</th><th>Achievable</th><th>Target</th>' +
+    FLEETS.map(function (f) { return '<th>' + esc(f) + '</th>'; }).join('') +
+    '<th>Route alert</th><th>Confidence</th></tr>';
+  var rows = LINE_ORDER.map(function (id) {
+    var l = N.lineById(id), r = REF.lines[id];
+    var cells = FLEETS.map(function (f) {
+      if (l.fleets.indexOf(f) < 0) return '<td class="mx-none">Does not run</td>';
+      var fr = l.fleets.length > 1 ? fleetRatio(id, f) : { v: 1, e: 1 };
+      var e = l.baseline * fr.e, v = l.kwhPerKm * fr.v, g = gap(v, e);
+      var tone = g > r.alertPct ? 'bad' : g > 0 ? 'warn' : 'good';
+      return '<td><a class="mx-cell" href="' + esc(dash(id, 'fleet=' + f)) + '">' +
+        '<span class="mono">' + fmt(e) + '</span><span class="mx-gap mx-' + tone + ' mono">' + esc(signed(g)) + '</span></a></td>';
+    }).join('');
+    var alert = r.recommendedPct != null
+      ? '<span class="mono">' + pctTxt(r.alertPct) + ARROW + '</span><a class="mx-rec mono" href="#rec-line-' + id + '">' + pctTxt(r.recommendedPct) + '</a>'
+      : '<span class="mono">' + pctTxt(r.alertPct) + '</span><span class="mx-same">' + (r.confidence === 'low' ? 'Not yet' : 'No change') + '</span>';
+    return '<tr><td><a class="cell-link" href="' + esc(dash(id)) + '">' + esc(lineName(id)) + '</a>' +
+        '<div class="dt-sub mono">' + esc(l.baselineId) + SEP + 'now ' + fmt(l.kwhPerKm) + ' kWh/km</div></td>' +
+      '<td class="mono">' + fmt(l.baseline) + '</td>' +
+      '<td class="mono">' + (r.achievable != null ? fmt(r.achievable) : DASH) + '</td>' +
+      '<td class="mono">' + fmt(r.target) + '</td>' + cells +
+      '<td>' + alert + '</td><td>' + X.conf(r.confidence, r.confidenceWhy) + '</td></tr>';
+  }).join('');
+  var fleetRow = '<tr class="mx-foot"><td><strong>Train alert</strong><div class="dt-sub">Index against own fleet</div></td><td colspan="3" class="mx-note">' +
+    'A train is flagged when it sits this far above the rest of its fleet on the same routes.</td>' +
+    FLEETS.map(function (f) {
+      var fr = REF.fleets[f];
+      return '<td>' + (fr.recommendedIndex != null
+        ? '<span class="mono">' + fr.alertIndex + ARROW + '</span><a class="mx-rec mono" href="#rec-fleet-' + f.charAt(0) + '">' + fr.recommendedIndex + '</a>'
+        : '<span class="mono">' + fr.alertIndex + '</span><span class="mx-same">No change</span>') + '</td>';
+    }).join('') + '<td colspan="2"></td></tr>';
+  var secRow = '<tr class="mx-foot"><td><strong>Sections</strong><div class="dt-sub">Between two stations</div></td><td colspan="6" class="mx-note">' +
+    'Use their line\u2019s expected level. They have no target of their own, and vary more than whole lines.</td>' +
+    '<td><span class="mono">' + pctTxt(REF.section.alertPct) + ARROW + '</span><a class="mx-rec mono" href="#rec-section">' + pctTxt(REF.section.recommendedPct) + '</a></td><td></td></tr>';
+  return '<section class="panel mb-6" id="matrix">' +
+    '<div class="panel-head"><div><div class="panel-title">By line and fleet</div>' +
+      '<div class="panel-sub">Expected energy per kilometre for each fleet on each line, and how far it runs from it today. Select a value to open that scope on Energy performance.</div></div>' +
+      '<div class="panel-actions">' + X.estTag() + R.sref('S2') + '</div></div>' +
+    '<div class="panel-body flush"><div class="mx-wrap"><table class="dt mx"><thead>' + head + '</thead><tbody>' + rows + fleetRow + secRow + '</tbody></table></div>' +
+      '<p class="mx-legend">kWh/km. The small figure is today\u2019s gap against expected: <span class="mx-good">at or below</span>, <span class="mx-warn">above</span>, <span class="mx-bad">above the alert</span>.</p></div>' +
+  '</section>';
+}
+
+/* -------------------------------------------------------- recommendations */
+function previewFor(list, now, next) {
+  var pn = null, pr = null;
+  list.forEach(function (p) { if (p.pct === now) pn = p; if (p.pct === next) pr = p; });
+  return { now: pn, rec: pr };
+}
+function effectTxt(p) {
+  if (!p.now || !p.rec) return '';
+  var a = 'Last quarter this would have raised ' + R.plural(p.rec.alerts, 'alert', 'alerts') + ' instead of ' + p.now.alerts;
+  if (p.rec.cases === p.now.cases) {
+    if (!p.rec.cases) return a + '. None of them became cases at either level.';
+    return a + ', and still caught ' + (p.rec.cases === 1 ? 'the one that became a case.' : 'the ' + p.rec.cases + ' that became cases.');
+  }
+  return a + ', and ' + p.rec.cases + ' would have become cases instead of ' + p.now.cases + '.';
+}
+function previewTbl(list, now, next) {
+  return '<div class="rec-sub">What each level would have raised last quarter</div>' +
+    '<table class="rec-prev"><thead><tr><th>Alert at</th><th>Alerts</th><th>Became cases</th></tr></thead><tbody>' +
+    list.map(function (p) {
+      var tag = p.pct === now ? '<span class="pv-mark pv-now">Now</span>' : p.pct === next ? '<span class="pv-mark pv-rec">Recommended</span>' : '';
+      return '<tr class="' + (p.pct === next ? 'on' : '') + '"><td class="mono">' + pctTxt(p.pct) + ' ' + tag + '</td>' +
+        '<td class="mono">' + p.alerts + '</td><td class="mono">' + p.cases + '</td></tr>';
+    }).join('') + '</tbody></table>';
+}
+function card(o) {
+  var tight = o.next < o.now;
+  return '<div class="rq" id="' + esc(o.id) + '">' +
+    '<div class="rq-top"><span class="rq-kind">' + esc(o.kind) + '</span>' +
+      '<span class="rq-dir ' + (tight ? 'rq-tight' : 'rq-wide') + '">' + (tight ? 'Tighter' : 'Wider') + '</span></div>' +
+    '<div class="rq-head"><span class="rq-was mono">' + esc(o.nowTxt) + '</span>' + ARROW + '<span class="mono">' + esc(o.nextTxt) + '</span></div>' +
+    '<p>' + esc(o.why) + '</p>' +
+    (o.effect ? '<p class="rq-effect">' + esc(o.effect) + '</p>' : '') +
+    (o.preview || '') +
+    '<div class="rq-foot">' +
+      (isEpm ? '<button type="button" class="btn-accept" data-accept="' + esc(o.id) + '">Accept ' + esc(o.nextTxt) + '</button>' : '') +
+      (o.href ? '<a class="cell-link" href="' + esc(o.href) + '">See it on Energy performance</a>' : '') +
+    '</div>' +
+    (isEpm ? '<div class="rq-status" id="st-' + esc(o.id) + '"></div>' : '') +
+  '</div>';
+}
+function recBlock() {
+  var cards = [], held = [];
+  ['L3', 'L2', 'L1', 'L4'].forEach(function (id) {
+    var r = REF.lines[id];
+    if (r.recommendedPct == null) {
+      held.push({ name: lineName(id), why: r.recommendWhy, low: r.confidence === 'low',
+                  href: r.confidence === 'low' ? dash(id) + '#confidence' : null });
+      return;
+    }
+    var p = previewFor(r.preview || [], r.alertPct, r.recommendedPct);
+    cards.push(card({ id: 'rec-line-' + id, kind: 'Route alert' + SEP + lineName(id), now: r.alertPct, next: r.recommendedPct,
+      nowTxt: pctTxt(r.alertPct), nextTxt: pctTxt(r.recommendedPct),
+      why: r.recommendWhy + ' Week-to-week variation is about ' + X.fmt(r.variabilityPct, 1) + '%.',
+      effect: effectTxt(p), preview: r.preview ? previewTbl(r.preview, r.alertPct, r.recommendedPct) : '',
+      href: dash(id) + '#references' }));
+  });
+  var sr = REF.section;
+  cards.push(card({ id: 'rec-section', kind: 'Section alert' + SEP + 'all lines', now: sr.alertPct, next: sr.recommendedPct,
+    nowTxt: pctTxt(sr.alertPct), nextTxt: pctTxt(sr.recommendedPct),
+    why: sr.recommendWhy + ' Week-to-week variation is about ' + X.fmt(sr.variabilityPct, 1) + '%.', href: null }));
+  FLEETS.forEach(function (f) {
+    var fr = REF.fleets[f];
+    if (fr.recommendedIndex == null) { held.push({ name: f + ' train alert', why: fr.recommendWhy, low: false, href: null }); return; }
+    cards.push(card({ id: 'rec-fleet-' + f.charAt(0), kind: 'Train alert' + SEP + f, now: fr.alertIndex, next: fr.recommendedIndex,
+      nowTxt: 'index ' + fr.alertIndex, nextTxt: 'index ' + fr.recommendedIndex, why: fr.recommendWhy,
+      href: 'overview.html?fleet=' + f }));
+  });
+  var heldHtml = '<div class="rq-held"><div class="rec-sub">Not changing</div><ul>' + held.map(function (h) {
+    return '<li><strong>' + esc(h.name) + '.</strong> ' + esc(h.why) +
+      (h.href ? ' <a class="cell-link" href="' + esc(h.href) + '">What would raise confidence</a>' : '') + '</li>';
+  }).join('') + '</ul></div>';
+  return '<section class="mb-6" id="recommendations">' +
+    '<div class="sec-head"><h2>' + (isEpm ? 'Waiting for your decision' : 'Recommended changes') +
+      ' <span class="rq-count">' + cards.length + '</span></h2>' +
+      '<p>Recommended from how much each line, section and fleet varies, and checked against what each level would have raised last quarter.</p></div>' +
+    '<div class="rq-grid">' + cards.join('') + '</div>' + heldHtml +
+    '<p class="rec-who">' + (isEpm
+      ? 'You decide. An accepted level applies to new findings from next week; findings already raised keep the level they were raised under.'
+      : 'Recommendations are accepted by ' + esc(epmName) + '. The platform never changes a threshold on its own.') + '</p>' +
+  '</section>';
+}
+
+/* ----------------------------------------------------------------- render */
+main.innerHTML = '<div class="dash">' +
+  '<p class="lede">Every number on Energy performance is judged against a reference. This page shows the four references, ' +
+    'where each one comes from and who owns it, and the alert levels the platform recommends changing. Nothing changes until a person accepts it.</p>' +
+  defsBlock() + recBlock() + matrixBlock() +
+  (can('admin') ? '<p class="rec-who">Baselines behind Expected are versioned in <a class="cell-link" href="admin.html?view=models">Administration' + SEP + 'Baselines and models</a>.</p>' : '') +
+'</div>';
+
+var accepts = document.querySelectorAll('[data-accept]');
+for (var ai = 0; ai < accepts.length; ai++) {
+  (function (b) {
+    b.addEventListener('click', function () {
+      var id = b.getAttribute('data-accept');
+      var s = document.getElementById('st-' + id);
+      if (s) s.textContent = 'Accepted by ' + epmName + '. Applies to new findings from next week.';
+      var c = document.getElementById(id);
+      if (c) c.className += ' rq-done';
+      b.disabled = true;
+      b.textContent = 'Accepted';
+    });
+  })(accepts[ai]);
+}
+})();
+</script>
+</body>
+</html>

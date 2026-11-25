@@ -74,7 +74,7 @@ var ROLES = {
     color: '#1d5fa8',
     soft: 'rgba(29,95,168,.10)',
     home: 'overview.html',
-    nav: ['overview', 'explore', 'portfolio', 'caseload', 'ledger', 'admin'],
+    nav: ['overview', 'portfolio', 'caseload', 'ledger', 'references', 'admin'],
     depth: 'L1',
     cadence: 'Weekly, with monthly reporting',
     question: 'Are we improving, and is the pipeline healthy enough to keep improving?',
@@ -97,7 +97,7 @@ var ROLES = {
     color: '#9a3f74',
     soft: 'rgba(154,63,116,.10)',
     home: 'overview.html',
-    nav: ['overview', 'explore', 'runs', 'fleet', 'caseload', 'portfolio'],
+    nav: ['overview', 'runs', 'fleet', 'caseload', 'portfolio', 'references'],
     depth: 'L2',
     cadence: 'Daily — the highest-frequency user',
     question: 'What is actually going on here, and can I build a case defensible enough to survive challenge?',
@@ -120,7 +120,7 @@ var ROLES = {
     color: '#8a5520',
     soft: 'rgba(138,85,32,.10)',
     home: 'decisions.html',
-    nav: ['decisions', 'caseload', 'overview', 'explore', 'runs', 'ledger'],
+    nav: ['decisions', 'caseload', 'overview', 'runs', 'ledger', 'references'],
     depth: 'L2',
     cadence: 'On demand, in short reviews',
     question: 'What is this going to cost me in running time, and is it worth it?',
@@ -144,7 +144,7 @@ var ROLES = {
     color: '#14706b',
     soft: 'rgba(20,112,107,.10)',
     home: 'fleet.html',
-    nav: ['fleet', 'runs', 'overview', 'explore', 'decisions', 'caseload'],
+    nav: ['fleet', 'runs', 'overview', 'decisions', 'caseload', 'references'],
     depth: 'L3',
     cadence: 'On demand, deep and episodic',
     question: 'Is this my fleet\u2019s problem, and if so which units and how badly?',
@@ -163,14 +163,14 @@ var ROLES = {
    `group` splits the sidebar into the two halves of the product: the measurement
    surfaces a user looks at, and the managed work a user acts on. */
 var NAV = {
-  overview:  { label: 'Energy overview', href: 'overview.html', icon: 'pulse',   badge: null, group: 'monitor' },
-  explore:   { label: 'Performance explanation', href: 'explore.html', icon: 'chart', badge: null, group: 'monitor', parent: 'overview' },
+  overview:  { label: 'Energy performance', href: 'overview.html', icon: 'pulse',   badge: null, group: 'monitor' },
   runs:      { label: 'Runs',            href: 'runs.html',     icon: 'route',   badge: null, group: 'monitor' },
   fleet:     { label: 'Fleet',           href: 'fleet.html',    icon: 'train',   badge: null, group: 'monitor' },
   caseload:  { label: 'Caseload',   href: 'caseload.html',  icon: 'layers',   badge: 'myCases', group: 'manage' },
   decisions: { label: 'Decisions',  href: 'decisions.html', icon: 'gavel',    badge: 'myGates', group: 'manage' },
   portfolio: { label: 'Portfolio',  href: 'portfolio.html', icon: 'target',   badge: null, group: 'manage' },
   ledger:    { label: 'Ledger',     href: 'ledger.html',    icon: 'ledger',   badge: null, group: 'manage' },
+  references: { label: 'References', href: 'references.html', icon: 'sliders', badge: null, group: 'govern' },
   admin:     { label: 'Administration', href: 'admin.html', icon: 'cog',      badge: null, group: 'govern' }
 };
 

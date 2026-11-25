@@ -251,6 +251,7 @@ body[data-depth="L3"] .trace-ladder{ display: block; }
    One row, four slots: identity, search, depth, role. Rendered once by
    shell.js so every workspace is guaranteed the same controls.
    ----------------------------------------------------------------------- */
+#topbar{ position:sticky; top:0; z-index:40; }
 .topbar-slot{ display:flex; align-items:center; gap:14px; height:56px; padding:0 22px; background: var(--bg-elev-1); border-bottom:1px solid var(--border-soft); position:sticky; top:0; z-index:40; }
 .topbar-slot .ts-title{ font-size:13.5px; font-weight:650; color: var(--text-primary); letter-spacing:-.01em; }
 .topbar-slot .ts-crumb{ font-size:11.5px; color: var(--text-tertiary); }

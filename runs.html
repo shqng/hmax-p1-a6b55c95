@@ -199,8 +199,7 @@
             label: r.hop.label, sub: r.hop.km.toFixed(2) + ' km · ' + r.hop.speedClass,
             value: r.value, baseline: r.hop.baseline,
             flag: r.excess > 0 ? '+' + r.excess.toFixed(1) + ' kWh' : 'at baseline',
-            href: 'explore.html?line=' + focus.lineId + '&dir=' + encodeURIComponent(focus.direction) +
-                  '&view=contrib&hop=' + r.hop.id
+            href: 'overview.html?hop=' + r.hop.id
           };
         }), { dp: 2 }) +
         X.note(em(worstShare + '%') + ' of this run\u2019s excess energy occurred in ' +
