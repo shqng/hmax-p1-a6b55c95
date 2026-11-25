@@ -507,24 +507,24 @@ var DEVIATIONS = [
    runs already achieve; unclear means the platform cannot yet tell. */
 var DEVIATION_META = {
   'DV-1184': { attention: 'deterioration', confidence: 'high',   direction: 'Northbound', since: 'W33',
-               finding: 'Northbound trains between Woodleigh and Serangoon use more energy than expected, and the gap has grown since W33' },
+               finding: 'Woodleigh \u2192 Serangoon northbound: energy intensity above expected, increasing since W33' },
   'DV-1201': { attention: 'opportunity',   confidence: 'high',   direction: 'Northbound',
-               finding: 'Peak services into Kovan run consistently above what comparable runs achieve' },
+               finding: 'Kovan peak services: sustained variance vs achievable' },
   'DV-1209': { attention: 'deterioration', confidence: 'medium', fleetScope: 'B-series', units: ['B-214', 'B-227'],
-               finding: 'Two B-series trains use noticeably more energy than the rest of the fleet on the same routes' },
+               finding: 'B-214 and B-227: energy intensity above B-series fleet average on equivalent routes' },
   'DV-1216': { attention: 'opportunity',   confidence: 'medium', direction: 'Northbound',
-               finding: 'Simei to Tanah Merah northbound runs above what comparable runs achieve' },
+               finding: 'Simei \u2192 Tanah Merah northbound: sustained variance vs achievable' },
   'DV-1219': { attention: 'deterioration', confidence: 'medium', fleetScope: 'A-series',
-               finding: 'Off-peak southbound services on the North South Line have drifted above expected for five weeks' },
+               finding: 'North South Line off-peak southbound: five-week upward drift vs expected' },
   'DV-1223': { attention: 'unclear',       confidence: 'low',    fleetScope: 'C-series',
-               finding: 'Circle Line trains may be recovering less braking energy than they should',
-               limitedBy: 'The comparison is against the line\u2019s own history, which is a weak baseline' },
+               finding: 'Circle Line C-series: possible reduction in braking energy recovery',
+               limitedBy: 'Baseline uses historical data only (weak comparator)' },
   'DV-1228': { attention: 'unclear',       confidence: 'low',
-               finding: 'Kallang to Lavender northbound is occasionally above expected',
-               limitedBy: 'Intermittent over two weeks; not yet separable from normal variation' },
+               finding: 'Kallang \u2192 Lavender northbound: intermittent variance above expected',
+               limitedBy: 'Intermittent over two weeks; not yet distinguishable from normal variation' },
   'DV-1231': { attention: 'unclear',       confidence: 'low',
-               finding: 'Woodlands to Admiralty northbound has just started to rise',
-               limitedBy: 'One week of data; too early to tell' }
+               finding: 'Woodlands \u2192 Admiralty northbound: emerging upward trend',
+               limitedBy: 'One week of data; insufficient for conclusion' }
 };
 DEVIATIONS.forEach(function (d) {
   var m = DEVIATION_META[d.id], k;

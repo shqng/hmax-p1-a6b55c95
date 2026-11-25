@@ -45,17 +45,17 @@ var BANDS = ['All', 'Peak', 'Off-peak'];
 var FLEETS = ['All', 'A-series', 'B-series', 'C-series'];
 var COMPARES = ['expected', 'achievable', 'target'];
 var COMPARE_LABEL = { expected: 'Expected', achievable: 'Achievable', target: 'Target' };
-var COMPARE_TEXT = { expected: 'expected', achievable: 'the achievable level', target: 'its target' };
+var COMPARE_TEXT = { expected: 'expected', achievable: 'achievable', target: 'target' };
 var PERIODS = [{ id: 'p28', label: '28 days' }, { id: 'p12w', label: '12 weeks' }, { id: 'p6m', label: '6 months' }];
 var BF = { All: { v: 1, e: 1, r: 1 }, Peak: { v: 1.08, e: 1.068, r: 0.38 }, 'Off-peak': { v: 0.958, e: 0.96, r: 0.62 } };
 var BF_LINE = { L1: { 'Off-peak': { v: 0.975, e: 0.96, r: 0.62 } }, L3: { Peak: { v: 1.09, e: 1.068, r: 0.38 } } };
 var CW = { high: 1, medium: 0.7, low: 0.4 };
 var ATT = {
-  deterioration: { cls: 'det', label: 'Getting worse', rank: 0 },
-  opportunity:   { cls: 'opp', label: 'Opportunity', rank: 1 },
-  unclear:       { cls: 'unc', label: 'Can\u2019t tell yet', rank: 2 },
+  deterioration: { cls: 'det', label: 'Deteriorating', rank: 0 },
+  opportunity:   { cls: 'opp', label: 'Optimisation opportunity', rank: 1 },
+  unclear:       { cls: 'unc', label: 'Under observation', rank: 2 },
   target:        { cls: 'tgt', label: 'Target at risk', rank: 1 },
-  outcome:       { cls: 'out', label: 'Outcome check', rank: 3 }
+  outcome:       { cls: 'out', label: 'Benefit tracking', rank: 3 }
 };
 var PREF = { rse: ['trains'], opm: ['hour', 'where'] };
 var K_HOP = 214 / (0.70 * 2.40 * 412);
@@ -188,8 +188,8 @@ if (!err && st.fleet !== 'All') {
 
 if (err) {
   main.innerHTML = R.cannotConclude('Scope unavailable', err,
-      'Return to the network view and choose a line, section or finding from there.') +
-    '<p class="mt-4"><a class="cell-link" href="overview.html">Back to the network view</a></p>';
+      'The requested scope could not be resolved.') +
+    '<p class="mt-4"><a class="cell-link" href="overview.html">Return to network view</a></p>';
   return;
 }
 
@@ -337,12 +337,12 @@ if (hop) {
 }
 refs.alert = S.e * (1 + alertPct / 100);
 function nullReason(c) {
-  if (c === 'target') return hop ? 'Targets are set for lines, not sections.' : 'No target is set for this scope.';
-  if (c === 'achievable') return 'The Circle Line has no matched-run baseline, so no achievable level can be set.';
+  if (c === 'target') return hop ? 'Targets are defined at line level.' : 'No target defined for this scope.';
+  if (c === 'achievable') return 'Achievable level unavailable: no matched-run baseline for the Circle Line.';
   return '';
 }
 var cmp = st.compare;
-if (refs[cmp] == null) { compareNote = nullReason(cmp) + ' Showing the gap against expected instead.'; cmp = 'expected'; }
+if (refs[cmp] == null) { compareNote = nullReason(cmp) + ' Displaying variance against expected.'; cmp = 'expected'; }
 var refVal = refs[cmp];
 
 var regenFleet = st.fleet !== 'All' ? st.fleet : null;
@@ -364,15 +364,15 @@ var noRegen = regenFleet === 'C-series' || (L && L.id === 'L4');
 var confLevel, confWhy;
 if (focus) {
   confLevel = focus.confidence;
-  confWhy = focus.limitedBy || (X.fmtInt(focus.runs) + ' runs over ' + R.plural(focus.weeks, 'week', 'weeks') +
-    ', compared with a matched-run baseline.');
+  confWhy = focus.limitedBy || (X.fmtInt(focus.runs) + ' runs, ' + R.plural(focus.weeks, 'week', 'weeks') +
+    '; matched-run baseline.');
 } else {
   confLevel = owner.confidence;
   confWhy = owner.confidenceWhy;
 }
 if ((st.fleet === 'C-series' || (L && L.id === 'L4')) && confLevel !== 'low') {
   confLevel = 'low';
-  confWhy = 'Circle Line and C-series trains are compared with their own history only, and C-series trains do not recover braking energy.';
+  confWhy = 'Circle Line and C-series baselines use historical data only; C-series trains have no regenerative braking.';
 }
 
 /* ----------------------------------------------------------------- trend */
@@ -463,15 +463,15 @@ function raiseBtn(id) { return '<button type="button" class="raise-link" data-ra
 function actionFor(d) {
   if (d.caseId) return caseLink(d.caseId);
   if (d.state === 'candidate') return raiseBtn(d.id);
-  return '<span class="att-watch">Watching</span>';
+  return '<span class="att-watch">Monitoring</span>';
 }
 function subjectOf() {
   if (focus && trainRelated(focus)) {
     return (focus.units && focus.units.length ? andList(focus.units) : focus.fleetScope + ' trains') + ' on the ' + lineName(focus.lineId);
   }
   if (hop) return hop.label;
-  if (L) return 'The ' + lineName(L.id);
-  return 'The network';
+  if (L) return lineName(L.id);
+  return 'Network';
 }
 function subjPlural() {
   return !!(focus && trainRelated(focus) && !(focus.units && focus.units.length === 1));
@@ -506,14 +506,14 @@ function scopeBar() {
   if (st.dir !== 'Both') chips.push({ t: st.dir, ch: { dir: 'Both' } });
   if (st.band !== 'All') chips.push({ t: st.band + ' services', ch: { band: 'All' } });
   if (st.fleet !== 'All') chips.push({ t: st.fleet, ch: { fleet: 'All' } });
-  if (st.compare !== 'expected') chips.push({ t: 'Against ' + lower(COMPARE_LABEL[st.compare]), ch: { compare: 'expected' } });
+  if (st.compare !== 'expected') chips.push({ t: 'vs ' + COMPARE_LABEL[st.compare], ch: { compare: 'expected' } });
 
   var lines = [{ html: 'Network', on: !L, ch: { line: null } }];
   LINE_ORDER.forEach(function (id) {
     lines.push({ html: dot(STATUS[id]) + SHORT[id], on: L && L.id === id, ch: { line: id } });
   });
   var dirs = DIRS.map(function (d) {
-    return { html: d === 'Both' ? 'Both' : d, on: st.dir === d, ch: { dir: d }, off: L ? null : 'Choose a line first' };
+    return { html: d === 'Both' ? 'Both' : d, on: st.dir === d, ch: { dir: d }, off: L ? null : 'Available at line level' };
   });
   var bands = BANDS.map(function (b) { return { html: b === 'All' ? 'All day' : b, on: st.band === b, ch: { band: b } }; });
   var fleets = FLEETS.map(function (f) {
@@ -537,7 +537,7 @@ function scopeBar() {
           esc(h.label) + (f ? dot(f.attention) : '') + '</a>';
       }).join('') + '</div>';
     }).join('');
-    pick = '<details class="sb-pick"><summary>' + (hop ? 'Change section' : 'Choose a section') + '</summary>' +
+    pick = '<details class="sb-pick"><summary>' + (hop ? 'Change section' : 'Select section') + '</summary>' +
       '<div class="sb-pick-body">' + groups + '</div></details>';
   }
 
@@ -551,7 +551,7 @@ function scopeBar() {
     '</div>' +
     '<div class="sb-row sb-controls">' +
       seg('Line', lines) + seg('Direction', dirs) + seg('Service', bands) + seg('Fleet', fleets) +
-      seg('Period', periods) + seg('Compare with', compares) + pick +
+      seg('Period', periods) + seg('Benchmark', compares) + pick +
     '</div>' +
   '</div>';
 }
@@ -560,9 +560,9 @@ function scopeBar() {
 function whereSentence(d) {
   if (trainRelated(d)) {
     var who = d.units ? placeOf(d) : placeOf(d) + ' trains';
-    return 'Measured on ' + who + ' on the ' + lineName(d.lineId) + '. This finding is about trains, not a location.';
+    return 'Scope: ' + who + ' on the ' + lineName(d.lineId) + '. Train-related finding; not location-specific.';
   }
-  var s = 'Measured for ' + (st.dir !== 'Both' ? lower(st.dir) + ' services' : 'all services');
+  var s = 'Scope: ' + (st.dir !== 'Both' ? lower(st.dir) + ' services' : 'all services');
   if (st.band !== 'All') s += ' in the ' + lower(st.band) + ' band';
   if (st.fleet !== 'All') s += ' on ' + st.fleet + ' trains';
   if (hop) s += ' between ' + hop.from + ' and ' + hop.to;
@@ -578,24 +578,24 @@ function focusBanner() {
   var caseLine = '', act = [];
   if (focus.caseId) {
     var c = Q.caseById(focus.caseId), aw = caseAwait(focus.caseId);
-    caseLine = 'In case ' + esc(focus.caseId) + (c ? SEP + esc(R.stageOf(c).label) : '') +
-      (aw ? SEP + 'waiting on ' + esc(R.personOf(aw.role)) + ' for ' + esc(aw.what) + (aw.role === ctx.roleId ? ' (you)' : '') : '');
+    caseLine = 'Case ' + esc(focus.caseId) + (c ? SEP + esc(R.stageOf(c).label) : '') +
+      (aw ? SEP + 'Pending: ' + esc(R.personOf(aw.role)) + (aw.role === ctx.roleId ? ' (you)' : '') + ' \u2014 ' + esc(aw.what) : '');
     act.push(caseLink(focus.caseId));
   } else if (focus.state === 'held') {
-    caseLine = 'Keep watching. The platform will raise it if it persists; no change is proposed yet.';
+    caseLine = 'Status: Monitoring. Escalates automatically if the deviation persists; no change is proposed.';
   } else {
-    caseLine = 'Not in a case yet. Raise one to start an investigation and assign who looks next.';
+    caseLine = 'Status: Not assigned to a case.';
     act.push(raiseBtn(focus.id));
   }
-  act.push('<a class="cell-link" href="' + href({ finding: null }) + '">Clear focus</a>');
+  act.push('<a class="cell-link" href="' + href({ finding: null }) + '">Clear selection</a>');
   return '<section class="focus-banner fb-' + a.cls + '">' +
     '<div class="fb-top"><span class="att-kind">' + esc(a.label) + '</span>' + X.conf(focus.confidence, confWhy) +
       '<span class="mono fb-id">' + esc(focus.id) + '</span></div>' +
     '<h2 class="fb-title">' + esc(focus.finding) + '</h2>' +
     '<p class="fb-where">' + esc(whereSentence(focus)) + '</p>' +
-    '<p class="fb-meta mono">' + fmt(focus.kwhPerKm) + ' kWh/km against ' + fmt(focus.baseline) + ' expected' + SEP +
-      X.fmtInt(focus.runs) + ' runs over ' + esc(R.plural(focus.weeks, 'week', 'weeks')) + SEP +
-      'about ' + mwhTxt(focus.annualMWh) + ' a year (' + esc(gbp(focus.annualMWh)) + ')</p>' +
+    '<p class="fb-meta mono">' + fmt(focus.kwhPerKm) + ' kWh/km vs ' + fmt(focus.baseline) + ' expected' + SEP +
+      X.fmtInt(focus.runs) + ' runs' + SEP + esc(R.plural(focus.weeks, 'week', 'weeks')) + SEP +
+      'est. ' + mwhTxt(focus.annualMWh) + '/yr (' + esc(gbp(focus.annualMWh)) + ')</p>' +
     '<p class="fb-case">' + caseLine + '</p>' +
     '<div class="fb-actions">' + act.join('') + '</div>' +
   '</section>';
@@ -603,26 +603,26 @@ function focusBanner() {
 
 /* ---------------------------------------------------------------- status */
 function trendClause(att) {
-  if (att === 'deterioration') return 'The gap has been growing' + (basis && basis.since ? ' since ' + basis.since : '') + '.';
-  if (att === 'opportunity') return 'It is consistently above expected but not getting worse \u2014 an opportunity rather than a fault.';
-  if (att === 'unclear') return 'The signal is not strong enough yet to tell whether this is real.';
-  return 'No sustained change over the period.';
+  if (att === 'deterioration') return 'Variance increasing' + (basis && basis.since ? ' since ' + basis.since : '') + '.';
+  if (att === 'opportunity') return 'Consistently above expected with no deterioration.';
+  if (att === 'unclear') return 'Signal not yet distinguishable from normal variation.';
+  return 'No sustained change in period.';
 }
 function statusBlock() {
   var q = qualifiers();
   var subj = subjectOf() + (q.length ? ' (' + q.join(', ') + ')' : '');
-  var verb = Math.abs(gapC) < 0.05 ? vb('uses', 'use') + ' the same energy per kilometre as ' + COMPARE_TEXT[cmp]
-    : vb('uses ', 'use ') + X.fmt(Math.abs(gapC), 1) + '% ' + (gapC > 0 ? 'more' : 'less') + ' energy per kilometre than ' + COMPARE_TEXT[cmp];
-  var alertC = gapE > alertPct ? 'That is above the alert threshold of +' + X.fmt(alertPct, 1) + '% over expected.'
-    : gapE > 0 ? 'That is within the alert threshold of +' + X.fmt(alertPct, 1) + '% over expected.'
-    : 'That is at or below expected.';
-  if (cmp !== 'expected') alertC = 'Against expected it is ' + signed(gapE) + '%. ' + alertC;
+  var verb = Math.abs(gapC) < 0.05 ? 'in line with ' + COMPARE_TEXT[cmp]
+    : signed(gapC) + '% energy intensity vs ' + COMPARE_TEXT[cmp];
+  var alertC = gapE > alertPct ? 'Exceeds alert threshold (+' + X.fmt(alertPct, 1) + '%).'
+    : gapE > 0 ? 'Within alert threshold (+' + X.fmt(alertPct, 1) + '%).'
+    : 'At or below expected.';
+  if (cmp !== 'expected') alertC = signed(gapE) + '% vs expected. ' + alertC;
   return '<section class="status">' +
-    '<p class="status-line">' + esc(subj) + ' <strong>' + esc(verb) + '</strong>. ' + esc(alertC) + ' ' + esc(trendClause(pageAtt)) + '</p>' +
+    '<p class="status-line">' + esc(subj) + ': <strong>' + esc(verb) + '</strong>. ' + esc(alertC) + ' ' + esc(trendClause(pageAtt)) + '</p>' +
     (compareNote ? '<p class="status-note">' + esc(compareNote) + '</p>' : '') +
-    '<p class="status-meta">Expected = what comparable runs use in the same conditions (' +
-      (bl ? esc(bl.label) + SEP + esc(bl.id) + ' v' + esc(String(bl.version)) : 'a blend of the four line baselines') +
-      '). <a class="cell-link" href="#references">How the references are set</a></p>' +
+    '<p class="status-meta">Expected: consumption of comparable runs under equivalent conditions (' +
+      (bl ? esc(bl.label) + SEP + esc(bl.id) + ' v' + esc(String(bl.version)) : 'blended baseline across four lines') +
+      '). <a class="cell-link" href="#references">Baseline methodology</a></p>' +
   '</section>';
 }
 
@@ -640,22 +640,22 @@ function tile(o) {
 }
 function kpiTiles() {
   var t1 = tile({
-    label: 'Energy per kilometre', value: fmt(S.v), unit: 'kWh/km',
+    label: 'Energy intensity', value: fmt(S.v), unit: 'kWh/km',
     tone: gapE > alertPct ? 'bad' : gapE > 0 ? 'warn' : 'good',
-    sub: esc(signed(gapC)) + '% against ' + esc(COMPARE_TEXT[cmp]),
+    sub: esc(signed(gapC)) + '% vs ' + esc(COMPARE_TEXT[cmp]),
     extra: X.bullet({ value: S.v, expected: S.e, band: alertPct / 100, target: refs.target, achievable: refs.achievable })
   });
   var t2 = tile({
-    label: 'Energy above ' + esc(lower(COMPARE_LABEL[cmp])), value: excessC > 0 ? X.fmtInt(Math.round(excessC)) : '0', unit: 'MWh a year',
-    sub: excessC > 0 ? 'About ' + esc(gbp(excessC)) + ' a year if nothing changes.' : 'At or below ' + esc(COMPARE_TEXT[cmp]) + '.',
-    extra: cmp !== 'expected' && excessE > 0 ? '<div class="kt-foot">Of which ' + esc(mwhTxt(excessE)) + ' is above expected.</div>' : ''
+    label: 'Excess energy' + (cmp !== 'expected' ? ' vs ' + esc(lower(COMPARE_LABEL[cmp])) : ''), value: excessC > 0 ? X.fmtInt(Math.round(excessC)) : '0', unit: 'MWh/yr',
+    sub: excessC > 0 ? 'Est. ' + esc(gbp(excessC)) + ' annual cost impact' : 'At or below ' + esc(COMPARE_TEXT[cmp]),
+    extra: cmp !== 'expected' && excessE > 0 ? '<div class="kt-foot">Includes ' + esc(mwhTxt(excessE)) + ' above expected</div>' : ''
   });
   var regenD = S.regen - regenRef;
   var t3 = tile({
-    label: 'Braking energy recovered', value: X.fmt(S.regen, 1), unit: '%',
+    label: 'Regenerative recovery', value: X.fmt(S.regen, 1), unit: '%',
     tone: noRegen ? null : regenD < -1 ? 'warn' : null,
-    sub: noRegen ? 'C-series trains have no regenerative braking, so this is shown for reference only.'
-      : esc(signed(regenD)) + ' points against the fleet norm of ' + X.fmt(regenRef, 1) + '%.'
+    sub: noRegen ? 'Reference only: C-series trains have no regenerative braking'
+      : esc(signed(regenD)) + ' pts vs fleet norm (' + X.fmt(regenRef, 1) + '%)'
   });
   var inCase = findingsHere.filter(function (d) { return !!d.caseId; });
   if (focus && focus.caseId) inCase = inCase.concat([focus]);
@@ -664,14 +664,14 @@ function kpiTiles() {
   all.forEach(function (d) { mwhAll += d.annualMWh; if (waitsOnMe(d)) mine++; });
   inCase.forEach(function (d) { mwhCase += d.annualMWh; });
   var t4 = tile({
-    label: 'Under management',
+    label: 'Case coverage',
     value: all.length ? inCase.length + '<span class="kt-of"> of ' + all.length + '</span>' : '0',
     unit: all.length ? R.plural(all.length, 'finding', 'findings').replace(/^\d+ /, '') : '',
     sub: all.length
-      ? 'About ' + esc(mwhTxt(mwhCase)) + ' of ' + esc(mwhTxt(mwhAll)) + ' a year is already in a case.'
-      : 'No findings ' + (level === 'network' ? 'on the network' : 'in this scope') + '.',
+      ? esc(mwhTxt(mwhCase)) + ' of ' + esc(mwhTxt(mwhAll)) + '/yr under investigation'
+      : 'No active findings ' + (level === 'network' ? 'on the network' : 'in scope'),
     extra: mine && can('caseload') ? '<div class="kt-foot"><a class="cell-link" href="caseload.html">' +
-      esc(R.plural(mine, 'case is', 'cases are')) + ' waiting on you</a></div>' : ''
+      esc(R.plural(mine, 'case', 'cases')) + ' assigned to you</a></div>' : ''
   });
   return '<section class="kt-grid">' + t1 + t2 + t3 + t4 + '</section>';
 }
@@ -681,7 +681,7 @@ function attCard(o) {
   var a = ATT[o.kind];
   return '<article class="att att-' + a.cls + '">' +
     '<div class="att-top"><span class="att-kind">' + esc(a.label) + '</span>' + (o.conf || '') +
-      (o.me ? '<span class="att-me">Waiting on you</span>' : '') +
+      (o.me ? '<span class="att-me">Assigned to you</span>' : '') +
       (o.id ? '<span class="att-id mono">' + esc(o.id) + '</span>' : '') + '</div>' +
     '<a class="att-title" href="' + o.href + '">' + esc(o.title) + '</a>' +
     (o.where ? '<p class="att-where">' + esc(o.where) + '</p>' : '') +
@@ -695,9 +695,9 @@ function findingCard(d) {
     kind: d.attention, id: d.id, conf: X.conf(d.confidence, d.limitedBy), me: waitsOnMe(d),
     href: href({ finding: d.id }), title: d.finding,
     where: level === 'network' || focus ? lineName(d.lineId) : '',
-    size: esc(signed(pct(d.kwhPerKm, d.baseline))) + '% against expected' + SEP + 'about ' + esc(mwhTxt(d.annualMWh)) + ' a year',
-    who: aw ? 'Waiting on ' + esc(R.personOf(aw.role)) + ' for ' + esc(aw.what)
-      : d.state === 'held' ? 'Held until there is more data' : 'Not in a case yet',
+    size: esc(signed(pct(d.kwhPerKm, d.baseline))) + '% vs expected' + SEP + 'est. ' + esc(mwhTxt(d.annualMWh)) + '/yr',
+    who: aw ? 'Pending: ' + esc(R.personOf(aw.role)) + ' \u2014 ' + esc(aw.what)
+      : d.state === 'held' ? 'Monitoring \u2014 insufficient data' : 'Unassigned',
     action: actionFor(d)
   });
 }
@@ -707,11 +707,11 @@ function targetCard() {
   scoped.forEach(function (d) { if (d.caseId) covered += d.annualMWh; });
   return attCard({
     kind: 'target', href: href({ compare: 'target' }),
-    title: subjectOf() + ' is running ' + X.fmt(pct(S.v, refs.target), 1) + '% above its target of ' + fmt(refs.target) + ' kWh/km',
+    title: subjectOf() + ': ' + X.fmt(pct(S.v, refs.target), 1) + '% above target (' + fmt(refs.target) + ' kWh/km)',
     where: owner.targetSource || '',
-    size: 'about ' + esc(mwhTxt(gapT)) + ' a year to close',
-    who: covered ? 'Open cases cover about ' + esc(mwhTxt(covered)) + ' of it' : 'No open case addresses it yet',
-    action: '<a class="cell-link" href="' + href({ compare: 'target' }) + '">Compare with target</a>'
+    size: 'est. ' + esc(mwhTxt(gapT)) + '/yr gap to target',
+    who: covered ? 'Open cases cover ' + esc(mwhTxt(covered)) : 'No open case',
+    action: '<a class="cell-link" href="' + href({ compare: 'target' }) + '">View vs target</a>'
   });
 }
 function outcomeCards() {
@@ -722,10 +722,10 @@ function outcomeCards() {
     var lid = String(v.scope).substring(0, 2);
     return attCard({
       kind: 'outcome', id: v.caseId, href: 'case.html?id=' + esc(enc(v.caseId)),
-      title: v.lever + ' on the ' + lineName(lid) + ': is it working?',
-      where: R.plural(v.elapsedWeeks, 'week', 'weeks') + ' of ' + v.totalWeeks + ' measured',
-      size: v.modelled ? 'modelled saving about ' + esc(mwhTxt(v.modelled)) + ' a year' : 'saving not yet modelled',
-      who: v.trend === 'on track' ? 'On track so far' : 'Too early to tell',
+      title: v.lever + ' \u2014 ' + lineName(lid),
+      where: 'Week ' + v.elapsedWeeks + ' of ' + v.totalWeeks + ' measurement period',
+      size: v.modelled ? 'Modelled saving: est. ' + esc(mwhTxt(v.modelled)) + '/yr' : 'Saving not yet modelled',
+      who: v.trend === 'on track' ? 'On track' : 'Inconclusive to date',
       action: caseLink(v.caseId)
     });
   });
@@ -736,12 +736,12 @@ function attentionBlock() {
   var tc = targetCard();
   if (tc) list.push(tc);
   list = list.concat(outcomeCards(), cards.slice(3));
-  var head = focus ? 'Elsewhere on the ' + lineName(L.id)
-    : level === 'network' ? 'What needs attention first' : 'What needs attention in this scope';
+  var head = focus ? 'Related Findings \u2014 ' + lineName(L.id)
+    : level === 'network' ? 'Priority Findings' : 'Priority Findings in Scope';
   var body;
   if (!list.length) {
-    body = '<p class="att-none">' + (focus ? 'Nothing else on this line needs attention.'
-      : 'Nothing in this scope needs attention. Every measure is inside its alert threshold or already being handled.') + '</p>';
+    body = '<p class="att-none">' + (focus ? 'No other findings on this line.'
+      : 'No findings require attention. All measures are within alert thresholds or under management.') + '</p>';
   } else {
     body = '<div class="att-list">' + list.slice(0, 5).join('') + '</div>' +
       (list.length > 5 ? '<details class="att-more"><summary>' + esc(R.plural(list.length - 5, 'more item', 'more items')) +
@@ -749,7 +749,7 @@ function attentionBlock() {
   }
   return '<section class="att-sec">' +
     '<div class="sec-head"><h2>' + esc(head) + '</h2>' +
-      '<p>Ranked by the energy at stake, weighted by how sure the platform is. Open one to narrow the dashboard to it.</p></div>' +
+      '<p>Ranked by annual energy impact and confidence</p></div>' +
     body + '</section>';
 }
 
@@ -764,8 +764,8 @@ function panel(o) {
         (a ? '<span class="cp-flag">' + esc(a.label) + '</span>' : '') + (o.tag || '') + '</header>' +
       (o.why ? '<p class="cp-why">' + esc(o.why) + '</p>' : '') +
       o.body + (o.key ? X.key(o.key) : '') + (o.reading ? X.note(o.reading, o.svc || 'S5') : '') +
-      (o.howto ? '<details class="howto"><summary>How to read this</summary><p>' + o.howto + '</p></details>' : '') +
-      (o.working ? '<details class="working"><summary>How this is worked out</summary><p>' + o.working + '</p></details>' : '') +
+      (o.howto ? '<details class="howto"><summary>Chart guide</summary><p>' + o.howto + '</p></details>' : '') +
+      (o.working ? '<details class="working"><summary>Methodology</summary><p>' + o.working + '</p></details>' : '') +
       (o.foot ? '<div class="cp-foot">' + o.foot + '</div>' : '') +
     '</section>' };
 }
@@ -809,9 +809,9 @@ function trendPanel() {
   var ev = '';
   marks.forEach(function (m) {
     if (ev) return;
-    if (m.kind === 'gap') ev = ' One week has no data because substation metering was missing; it is left blank rather than estimated.';
-    else if (m.kind === 'intervention') ev = ' The ' + m.label + ' is marked; compare the weeks either side of it.';
-    else if (m.kind === 'changepoint') ev = ' The platform marks where the gap started to grow.';
+    if (m.kind === 'gap') ev = ' One week excluded: substation metering unavailable.';
+    else if (m.kind === 'intervention') ev = ' Intervention marked: ' + m.label + '.';
+    else if (m.kind === 'changepoint') ev = ' Change point detected and marked.';
   });
   var keys = ['measured', 'expected', 'band', 'alert'];
   if (refs.target != null) keys.push('target');
@@ -823,16 +823,16 @@ function trendPanel() {
     (st.band !== 'All' ? '&band=' + enc(st.band) : '') : 'runs.html';
   return panel({
     id: 'trend', pinned: true, span: true, att: pageAtt,
-    q: 'Is it getting worse?', title: 'Energy per kilometre, week by week',
+    q: 'Trend', title: 'Energy intensity (kWh/km), weekly',
     why: trendClause(pageAtt), body: body, key: keys, svc: 'S1',
-    reading: X.em(subjNow) + vb(' has', ' have') + ' been above the alert threshold in ' + X.em(over + ' of ' + n) + ' weeks. ' +
+    reading: X.em(subjNow) + ' exceeded the alert threshold in ' + X.em(over + ' of ' + n) + ' weeks. ' +
       esc(trendClause(pageAtt)) + esc(ev) +
-      (ciF ? ' The shaded band around the measured line shows the uncertainty that comes with ' + esc(confLevel) + ' confidence.' : ''),
-    howto: 'The solid line is measured energy per kilometre. The dashed line is what comparable runs use in the same conditions, and the grey band around it is the normal range; its upper edge is the alert threshold. Points above it turn amber. Dotted lines mark the target and the achievable level, and vertical rules mark events on the railway.',
-    working: 'Expected comes from ' + esc(bl ? bl.label + ' (' + X.fmtInt(bl.sampleRuns) + (bl.type === 'historical-self' ? ' runs' : ' matched runs') + ')' : 'the four line baselines, weighted by energy') +
-      '. The alert threshold is +' + X.fmt(alertPct, 1) + '% over expected (' + esc(hop ? REF.section.alertSource : owner.alertSource) + ').' +
+      (ciF ? ' Shaded band indicates measurement uncertainty at ' + esc(confLevel) + ' confidence.' : ''),
+    howto: 'Solid line: measured energy intensity. Dashed line: expected, based on comparable runs under equivalent conditions. Grey band: normal range; its upper edge is the alert threshold. Amber points exceed the threshold. Dotted lines: target and achievable level. Vertical rules: network events.',
+    working: 'Expected: ' + esc(bl ? bl.label + ' (' + X.fmtInt(bl.sampleRuns) + (bl.type === 'historical-self' ? ' runs' : ' matched runs') + ')' : 'four line baselines, energy-weighted') +
+      '. Alert threshold: +' + X.fmt(alertPct, 1) + '% over expected (' + esc(hop ? REF.section.alertSource : owner.alertSource) + ').' +
       ' Traction energy is estimated from train movement and calibrated against substation metering.',
-    foot: can('runs') ? '<a class="cell-link" href="' + esc(runsHref) + '">See the runs behind this</a>' : ''
+    foot: can('runs') ? '<a class="cell-link" href="' + esc(runsHref) + '">View underlying runs</a>' : ''
   });
 }
 
@@ -844,7 +844,7 @@ function linePanel() {
     var l = N.lineById(id), ls = lineScope(l, 'Both', st.band, st.fleet), s = STATUS[id];
     return { id: id, gap: pct(ls.v, ls.e), item: {
       label: lineName(id), sub: s ? ATT[s].label : 'Within range', value: ls.v, baseline: ls.e,
-      tone: STATUS_TONE[s] || 'green', href: url({ line: id }), title: 'Narrow the dashboard to the ' + lineName(id),
+      tone: STATUS_TONE[s] || 'green', href: url({ line: id }), title: 'Filter to ' + lineName(id),
       flag: R.plural(N.DEVIATIONS.filter(function (d) { return d.lineId === id; }).length, 'finding', 'findings')
     } };
   });
@@ -856,12 +856,12 @@ function linePanel() {
   var worst = rows[0];
   var overN = rows.filter(function (r) { return r.gap > REF.lines[r.id].alertPct; }).length;
   return panel({
-    id: 'where', att: att, q: 'Where is it happening?', title: 'By line',
-    why: att ? andList(hit) + (hit.length > 1 ? ' are ' : ' is ') + lower(ATT[att].label) + '.' : '',
+    id: 'where', att: att, q: 'Line performance', title: 'Energy intensity by line',
+    why: att ? andList(hit) + ': ' + ATT[att].label + '.' : '',
     body: X.rankedBars(rows.map(function (r) { return r.item; }), { dp: 2 }),
-    reading: X.em(lineName(worst.id)) + ' is furthest above expected, at ' + esc(signed(worst.gap)) + '%. ' +
-      esc(R.plural(overN, 'line is', 'lines are')) + ' above the alert threshold. Select a line to narrow the dashboard to it.',
-    howto: 'Each bar is a line\u2019s energy per kilometre. The thin rule is its expected level. The colour shows whether the line is getting worse (red), steadily above expected (amber) or not yet clear (grey).'
+    reading: X.em(lineName(worst.id)) + ' has the highest variance vs expected (' + esc(signed(worst.gap)) + '%). ' +
+      esc(R.plural(overN, 'line', 'lines')) + ' above alert threshold.',
+    howto: 'Bar: energy intensity per line. Rule: expected level. Colour: red, deteriorating; amber, consistently above expected; grey, under observation.'
   });
 }
 
@@ -878,20 +878,20 @@ function wherePanel() {
   var trainFocus = !!(focus && trainRelated(focus));
   if (trainFocus) att = null;
   return panel({
-    id: 'where', att: att, q: 'Where is it happening?', title: 'Sections with the most energy above expected',
-    why: trainFocus ? 'This finding is about trains, so sections are shown for context only.' : flagged.length ? (flagged.length > 2
+    id: 'where', att: att, q: 'Location', title: 'Sections by excess energy',
+    why: trainFocus ? 'Train-related finding; sections shown for context only.' : flagged.length ? (flagged.length > 2
         ? flagged.slice(0, 2).map(function (r) { return r.h.label; }).join(', ') + ' and ' + (flagged.length - 2) + ' more are'
         : andList(flagged.map(function (r) { return r.h.label; })) + (flagged.length > 1 ? ' are' : ' is')) +
-      ' above the section alert threshold.' : '',
+      ' above section alert threshold.' : '',
     body: X.rankedBars(top.map(function (r) {
       return { label: r.h.label, sub: r.h.direction + (r.h.caseId ? SEP + r.h.caseId : ''), value: r.s.v, baseline: r.s.e,
                tone: r.s.finding ? STATUS_TONE[r.s.finding.attention] : r.s.v > r.s.e * (1 + REF.section.alertPct / 100) ? 'amber' : null,
-               href: url({ hop: r.h.id }), title: 'Narrow the dashboard to ' + r.h.label,
+               href: url({ hop: r.h.id }), title: 'Filter to ' + r.h.label,
                flag: r.s.finding ? 'Finding' : '' };
     }), { dp: 2 }),
-    reading: top.length ? X.em(top[0].h.label) + ' has the most energy above expected on the ' + esc(lineName(L.id)) +
-      (st.dir !== 'Both' ? ' ' + esc(lower(st.dir)) : '') + '. Select a section to see what may be contributing.' : 'No sections in this scope.',
-    howto: 'Sections are ranked by total energy above expected, which combines how far above expected they are with how long they are and how many trains use them. A short section far above expected can rank below a long one slightly above.'
+    reading: top.length ? X.em(top[0].h.label) + ' has the highest excess energy on the ' + esc(lineName(L.id)) +
+      (st.dir !== 'Both' ? ' ' + esc(lower(st.dir)) : '') + '.' : 'No sections in scope.',
+    howto: 'Ranked by total excess energy: variance from expected, weighted by section length and run volume. A short section well above expected may rank below a long section marginally above.'
   });
 }
 
@@ -904,7 +904,7 @@ function hourPanel() {
     var v = h.kwhPerKm * fv * bl2.v / bn.v, e = h.baseline * fe * bl2.e / bn.e;
     return { label: h.label, value: v, baseline: e, tone: v > e * (1 + aFrac) ? 'amber' : 'accent',
              dim: (st.band === 'Peak' && b !== 'Peak') || (st.band === 'Off-peak' && b === 'Peak'),
-             href: url({ band: b }), title: h.label + SEP + fmt(v) + ' kWh/km against ' + fmt(e) + ' expected' + SEP + lower(b) + ' \u2014 select to narrow' };
+             href: url({ band: b }), title: h.label + SEP + fmt(v) + ' kWh/km vs ' + fmt(e) + ' expected' + SEP + lower(b) };
   });
   var pk = scopeFor('Peak'), op = scopeFor('Off-peak');
   if (focus && focus.band) { if (focus.band === 'Peak') pk = S; else op = S; }
@@ -912,14 +912,14 @@ function hourPanel() {
   var banded = focus ? (focus.band ? [focus] : []) : scoped.filter(function (d) { return !!d.band; });
   var att = severest(banded.map(function (d) { return d.attention; }));
   if (!att && Math.max(pg, og) > alertPct && Math.abs(pg - og) > Math.max(1, alertPct)) att = 'opportunity';
-  var hiB = pg >= og ? 'Peak' : 'Off-peak', loB = pg >= og ? 'off-peak' : 'in the peak';
-  var why = hiB + ' services run ' + X.fmt(Math.max(pg, og), 1) + '% above expected, against ' + X.fmt(Math.min(pg, og), 1) + '% ' + loB + '.' +
-    (banded.length && !focus ? ' ' + R.plural(banded.length, 'finding is', 'findings are') + ' tied to one service band.' : '');
+  var hiB = pg >= og ? 'Peak' : 'Off-peak', loB = pg >= og ? 'off-peak' : 'peak';
+  var why = hiB + ' services ' + signed(Math.max(pg, og)) + '% vs expected; ' + loB + ' ' + signed(Math.min(pg, og)) + '%.' +
+    (banded.length && !focus ? ' ' + R.plural(banded.length, 'finding', 'findings') + ' linked to a single service band.' : '');
   return panel({
-    id: 'hour', att: att, q: 'When is it happening?', title: 'By hour of the day',
+    id: 'hour', att: att, q: 'Time of day', title: 'Energy intensity by hour',
     why: why, body: X.columns(items, { height: 170, zero: false }), key: ['measured', 'expected'],
-    reading: esc(why) + ' Peak hours always cost more per kilometre, so each hour is compared with its own expected level, not the daily average. Select a bar to narrow the dashboard to that band.',
-    howto: 'Each column is one hour. The dashed rule on each is what comparable runs use at that hour. Amber columns are above the alert threshold. Columns outside the selected service band are faded.'
+    reading: esc(why) + ' Each hour is benchmarked against its own expected level, as peak operation is inherently more energy-intensive.',
+    howto: 'Column: one hour. Dashed rule: expected level for that hour. Amber: above alert threshold. Faded: outside the selected service band.'
   });
 }
 
@@ -942,30 +942,29 @@ function trainPanel() {
       return st.fleet === 'All' || f.id === st.fleet;
     }).map(function (f) {
       return { label: f.id, sub: (f.regenCapable ? 'Regenerative braking' : 'No regenerative braking') + SEP + R.plural(f.units, 'train', 'trains'), value: f.index, baseline: 100,
-               href: url({ fleet: f.id }), title: 'Narrow the dashboard to the ' + f.id,
+               href: url({ fleet: f.id }), title: 'Filter to ' + f.id,
                tone: f.index > aIdx(f.id) ? 'red' : f.index > 100 ? 'amber' : 'green' };
-    }), { dp: 0 }) + '<div class="cp-sub">Trains furthest from their fleet</div>';
+    }), { dp: 0 }) + '<div class="cp-sub">Highest-variance trains</div>';
   }
   body += X.rankedBars(top.map(function (u) {
     return { label: u.id, sub: u.fleet + (u.caseId ? SEP + u.caseId : ''), value: u.index, baseline: 100,
              tone: u.index > aIdx(u.fleet) ? 'red' : u.index > 100 ? 'amber' : 'green',
              href: can('fleet') ? 'fleet.html?fleet=' + enc(u.fleet) + '&unit=' + enc(u.id) : null,
-             title: u.id + ' uses ' + u.index + '% of its fleet\u2019s typical energy on the same routes',
+             title: u.id + ': index ' + u.index + ' vs fleet on equivalent routes',
              flag: u.caseId ? 'In case' : '' };
   }), { dp: 0 });
   var overIds = over.map(function (u) { return u.id; });
   var overTxt = overIds.length > 3 ? overIds.slice(0, 3).join(', ') + ' and ' + (overIds.length - 3) + ' more'
     : andList(overIds);
   return panel({
-    id: 'trains', att: att, q: 'Is it the trains?', title: level === 'network' ? 'Fleets and trains' : 'Trains on this line',
-    why: overIds.length ? overTxt + (overIds.length > 1 ? ' are' : ' is') +
-      ' above the fleet alert index of ' + aIdx(over[0].fleet) + '.' : '',
+    id: 'trains', att: att, q: 'Fleet performance', title: level === 'network' ? 'Energy index by fleet and train' : 'Energy index by train',
+    why: overIds.length ? overTxt + ' above fleet alert index (' + aIdx(over[0].fleet) + ').' : '',
     body: body,
     reading: overIds.length
-      ? X.em(overTxt) + (overIds.length > 1 ? ' use' : ' uses') + ' noticeably more energy than the rest of the fleet on the same routes. When only a few trains stand out, the cause is more likely the trains than the timetable or the track.'
-      : 'No train stands out from its fleet. If energy is high here, the cause is more likely how trains are run than the trains themselves.',
-    howto: 'The index compares each train with the rest of its fleet on the same routes and conditions. 100 is typical for the fleet; 110 means 10% more energy per kilometre.',
-    foot: can('fleet') ? '<a class="cell-link" href="fleet.html' + (st.fleet !== 'All' ? '?fleet=' + esc(enc(st.fleet)) : '') + '">Open fleet view</a>' : ''
+      ? X.em(overTxt) + ' significantly above fleet average on equivalent routes. Variance isolated to individual trains indicates a rolling stock contributor rather than timetable or infrastructure.'
+      : 'No train significantly above fleet average. Variance in this scope is more likely operational than rolling stock related.',
+    howto: 'Index: train energy intensity relative to its fleet on equivalent routes and conditions. 100 = fleet typical; 110 = 10% above.',
+    foot: can('fleet') ? '<a class="cell-link" href="fleet.html' + (st.fleet !== 'All' ? '?fleet=' + esc(enc(st.fleet)) : '') + '">Fleet view</a>' : ''
   });
 }
 
@@ -976,14 +975,14 @@ function patternPanel() {
   sp.forEach(function (p) { if (p.label === 'Late brake' || p.label === 'Flat out') heavy += p.share; });
   var att = heavy > 25 ? 'opportunity' : null;
   return panel({
-    id: 'pattern', att: att, q: 'Is it how trains are driven?', title: 'Energy by driving pattern',
-    why: heavy + '% of runs brake late or run flat out, and these use the most energy per kilometre.',
+    id: 'pattern', att: att, q: 'Driving profile', title: 'Energy intensity by driving pattern',
+    why: heavy + '% of runs use late braking or full-power running, the most energy-intensive patterns.',
     body: X.rankedBars(sp.map(function (p) {
       return { label: p.label, sub: p.share + '% of runs', value: p.kwhPerKm * f, baseline: S0.e, tone: p.tone };
     }), { dp: 2 }),
-    reading: 'Runs that coast use about ' + X.fmt((1 - sp[0].kwhPerKm / sp[4].kwhPerKm) * 100, 0) +
-      '% less energy per kilometre than runs that go flat out. Shifting even a small share of runs towards coasting is usually the cheapest saving on a line.',
-    howto: 'Every run is classified by how it was driven between stations. Each bar is the average energy per kilometre of that pattern; the rule is the line\u2019s expected level.'
+    reading: 'Coasting runs use ' + X.fmt((1 - sp[0].kwhPerKm / sp[4].kwhPerKm) * 100, 0) +
+      '% less energy per kilometre than full-power runs. Increasing the coasting share is typically the lowest-cost saving lever.',
+    howto: 'Runs are classified by driving pattern between stations. Bar: average energy intensity per pattern. Rule: line expected level.'
   });
 }
 
@@ -992,24 +991,24 @@ function splitPanel() {
   var sp = N.ENERGY_SPLIT, tr = 0, rg = 0;
   sp.forEach(function (d) { if (d.id === 'traction') tr = d.mwh; if (d.id === 'recovered') rg = -d.mwh; });
   return panel({
-    id: 'split', q: 'Where does the energy go?', title: 'Energy split, last 12 weeks',
+    id: 'split', q: 'Energy breakdown', title: 'Energy distribution, last 12 weeks',
     body: X.stack(sp, { unit: 'MWh' }),
-    reading: 'Braking recovery returns ' + X.em(mwhTxt(rg)) + ', the equivalent of ' + X.fmt(rg / tr * 100, 0) +
-      '% of traction energy. Traction is the part this platform can influence most directly.',
-    howto: 'The bar splits the energy drawn from the substations into traction, on-board systems and losses. Energy returned by braking is shown separately.'
+    reading: 'Regenerative braking returns ' + X.em(mwhTxt(rg)) + ', equivalent to ' + X.fmt(rg / tr * 100, 0) +
+      '% of traction energy. Traction is the most directly controllable component.',
+    howto: 'Substation energy split into traction, auxiliary systems and losses. Regenerated energy shown separately.'
   });
 }
 
 /* 7. What may be contributing (section level) */
 var FACTORS = [
-  { k: 'regenPct', label: 'Braking energy recovered', unit: '%', dp: 1, worse: -1, role: 'rse', group: 'Train',
-    what: 'Less is recovered when trains brake late or their braking system underperforms.' },
-  { k: 'coastPct', label: 'Time spent coasting', unit: '%', dp: 0, worse: -1, role: 'opm', group: 'Movement',
-    what: 'Less coasting means more time under power between stations.' },
-  { k: 'dwellMean', label: 'Station dwell', unit: ' s', dp: 0, worse: 1, role: 'opm', group: 'Operational',
-    what: 'Long stops push trains to run harder afterwards to keep time.' },
-  { k: 'runtimeSd', label: 'Run-time variation', unit: ' s', dp: 1, worse: 1, role: 'opm', group: 'Movement',
-    what: 'Uneven running means more braking and re-accelerating, often from regulation or congestion.' }
+  { k: 'regenPct', label: 'Regenerative recovery', unit: '%', dp: 1, worse: -1, role: 'rse', group: 'Train',
+    what: 'Reduced by late braking or braking system underperformance.' },
+  { k: 'coastPct', label: 'Coasting time', unit: '%', dp: 0, worse: -1, role: 'opm', group: 'Movement',
+    what: 'Lower coasting share increases time under traction power.' },
+  { k: 'dwellMean', label: 'Dwell time', unit: ' s', dp: 0, worse: 1, role: 'opm', group: 'Operational',
+    what: 'Extended dwell requires harder running to recover schedule.' },
+  { k: 'runtimeSd', label: 'Run-time variance', unit: ' s', dp: 1, worse: 1, role: 'opm', group: 'Movement',
+    what: 'Irregular running increases braking and re-acceleration; commonly linked to regulation or congestion.' }
 ];
 function contributors() {
   var peers = N.hopsFor({ lineId: hop.lineId, direction: hop.direction }).filter(function (h) { return h.id !== hop.id; });
@@ -1022,8 +1021,8 @@ function contributors() {
       strength: score > 0.6 ? 'Strong' : score > 0.35 ? 'Moderate' : 'Weak' });
   });
   if (hop.speedClass === 'Late brake' || hop.speedClass === 'Flat out' || hop.speedClass === 'Held') {
-    out.push({ f: { label: 'Typical driving pattern', role: 'opm', group: 'Movement',
-      what: 'Most runs here are classed as \u201c' + lower(hop.speedClass) + '\u201d, which uses more energy than coasting.' },
+    out.push({ f: { label: 'Predominant driving pattern', role: 'opm', group: 'Movement',
+      what: 'Most runs classified as \u201c' + lower(hop.speedClass) + '\u201d; higher energy intensity than coasting.' },
       here: hop.speedClass, typical: null, score: 0.4, strength: 'Moderate' });
   }
   return out.map(function (c, i) { return { c: c, i: i }; }).sort(function (a, b) {
@@ -1036,29 +1035,29 @@ function contribPanel() {
   cs.forEach(function (c) { if (c.strength !== 'Weak' && !inArr(roles, c.f.role)) roles.push(c.f.role); });
   var body = cs.length ? '<div class="ctb-list">' + cs.map(function (c) {
     var vals = typeof c.here === 'number'
-      ? X.fmt(c.here, c.f.dp) + c.f.unit + ' here' + SEP + X.fmt(c.typical, c.f.dp) + c.f.unit + ' typical on this line'
+      ? X.fmt(c.here, c.f.dp) + c.f.unit + ' this section' + SEP + X.fmt(c.typical, c.f.dp) + c.f.unit + ' line median'
       : esc(c.here);
     return '<div class="ctb">' +
       '<div class="ctb-main"><span class="ctb-name">' + esc(c.f.label) + '</span><span class="ctb-group">' + esc(c.f.group) + '</span>' +
         '<span class="str str-' + lower(c.strength) + '">' + c.strength + '</span></div>' +
       '<div class="ctb-vals mono">' + vals + '</div>' +
       '<div class="ctb-what">' + esc(c.f.what) + '</div>' +
-      '<div class="ctb-owner">Best placed to check: ' + esc(R.personOf(c.f.role)) + (c.f.role === ctx.roleId ? ' (you)' : '') + '</div>' +
+      '<div class="ctb-owner">Suggested owner: ' + esc(R.personOf(c.f.role)) + (c.f.role === ctx.roleId ? ' (you)' : '') + '</div>' +
     '</div>';
-  }).join('') + '</div>' : '<p class="cp-none">No single factor stands out from other ' + esc(lower(hop.direction)) + ' sections on this line.</p>';
+  }).join('') + '</div>' : '<p class="cp-none">No significant factor identified relative to other ' + esc(lower(hop.direction)) + ' sections on this line.</p>';
   var both = inArr(roles, 'opm') && inArr(roles, 'rse');
   return panel({
-    id: 'contrib', att: null, pinned: true, span: true, q: 'What may be contributing?',
-    title: 'Compared with other ' + lower(hop.direction) + ' sections on the ' + lineName(hop.lineId),
-    tag: '<span class="cp-tag">' + R.smartTag('Proposal') + R.sref('S6') + '</span>',
-    why: cs.length ? 'The strongest signal is ' + lower(cs[0].f.label) + '.' : '',
+    id: 'contrib', att: null, pinned: true, span: true, q: 'Contributing factors',
+    title: 'Variance vs other ' + lower(hop.direction) + ' sections, ' + lineName(hop.lineId),
+    tag: '<span class="cp-tag">' + R.smartTag('Indicative') + R.sref('S6') + '</span>',
+    why: cs.length ? 'Strongest signal: ' + lower(cs[0].f.label) + '.' : '',
     body: body, svc: 'S6',
     reading: cs.length
-      ? 'This is a proposal, not a verdict. ' + X.em(cs[0].f.label) + ' stands out most here. ' +
-        (both ? 'Both a movement factor and a train factor stand out, so ' + esc(R.personOf('opm')) + ' and ' + esc(R.personOf('rse')) + ' should look at it together.'
-              : 'The signals point to one area, so one specialist can take the first look.')
-      : 'Nothing stands out, so the cause may lie outside what this platform measures today, such as track condition or power supply.',
-    howto: 'Each factor compares this section with the other sections on the line in the same direction. Strong means it is well outside what is normal for the line; weak means it is only slightly outside.'
+      ? 'Indicative only; not a root-cause determination. ' + X.em(cs[0].f.label) + ' shows the largest deviation. ' +
+        (both ? 'Movement and train factors both indicated; joint review recommended (' + esc(R.personOf('opm')) + ', ' + esc(R.personOf('rse')) + ').'
+              : 'Signals concentrated in one domain; single-discipline review indicated.')
+      : 'No measured factor deviates significantly. Contributors may lie outside current data coverage, such as track condition or power supply.',
+    howto: 'Each factor compares this section with other sections on the line in the same direction. Strong: well outside the line norm. Weak: marginally outside.'
   });
 }
 
@@ -1083,10 +1082,10 @@ function panelsBlock() {
   var loud = rest.filter(function (p) { return !!p.att; }), quiet = rest.filter(function (p) { return !p.att; });
   function html(l) { return l.map(function (p) { return p.html; }).join(''); }
   return '<section class="cp-sec">' +
-    '<div class="sec-head"><h2>Where, when and why</h2>' +
-      '<p>Charts that need a look come first. Each one says what it shows and how to read it; select a bar to narrow the dashboard.</p></div>' +
+    '<div class="sec-head"><h2>Operational Insights</h2>' +
+      '<p>Key performance drivers and trends</p></div>' +
     '<div class="cp-grid">' + html(pinned) + html(loud) + '</div>' +
-    (quiet.length ? '<details class="quiet-group"><summary>Checked \u2014 no further signal (' + quiet.length + ')</summary>' +
+    (quiet.length ? '<details class="quiet-group"><summary>No significant deviation (' + quiet.length + ')</summary>' +
       '<div class="cp-grid">' + html(quiet) + '</div></details>' : '') +
   '</section>';
 }
@@ -1096,16 +1095,16 @@ function refSection() {
   var dash = '\u2014';
   function gapCell(v) { return v == null ? dash : esc(signed(pct(S.v, v))) + '%'; }
   var rows = [
-    { id: 'expected', name: 'Expected', v: refs.expected, what: 'What comparable runs use in the same conditions.',
-      src: bl ? bl.label + SEP + bl.id + ' v' + bl.version : 'Each line\u2019s own baseline, weighted by energy' },
-    { id: 'achievable', name: 'Achievable', v: refs.achievable, what: 'What the best comparable runs already do.',
-      src: refs.achievable == null ? nullReason('achievable') : 'Best comparable runs, about ' + X.fmt((1 - REF.achievableRatio) * 100, 0) + '% below expected' },
-    { id: 'target', name: 'Target', v: refs.target, what: 'What the organisation has committed to.',
+    { id: 'expected', name: 'Expected', v: refs.expected, what: 'Consumption of comparable runs under equivalent conditions.',
+      src: bl ? bl.label + SEP + bl.id + ' v' + bl.version : 'Line baselines, energy-weighted' },
+    { id: 'achievable', name: 'Achievable', v: refs.achievable, what: 'Demonstrated performance of the best comparable runs.',
+      src: refs.achievable == null ? nullReason('achievable') : 'Best comparable runs, ' + X.fmt((1 - REF.achievableRatio) * 100, 0) + '% below expected' },
+    { id: 'target', name: 'Target', v: refs.target, what: 'Organisational commitment.',
       src: refs.target == null ? nullReason('target') : (owner.targetSource || '') + (owner.targetSetBy ? SEP + owner.targetSetBy : '') },
-    { id: 'alert', name: 'Alert threshold', v: refs.alert, what: 'How far above expected before the platform raises a finding.',
+    { id: 'alert', name: 'Alert threshold', v: refs.alert, what: 'Variance above expected that triggers a finding.',
       src: '+' + X.fmt(alertPct, 1) + '% over expected' + SEP + (hop ? REF.section.alertSource : owner.alertSource) }
   ];
-  var table = '<table class="dt ref-tbl"><thead><tr><th>Reference</th><th>Value</th><th>Now against it</th><th>What it means</th><th>Source</th></tr></thead><tbody>' +
+  var table = '<table class="dt ref-tbl"><thead><tr><th>Reference</th><th>Value</th><th>Current variance</th><th>Definition</th><th>Source</th></tr></thead><tbody>' +
     rows.map(function (r) {
       return '<tr class="' + (r.id === cmp ? 'on' : '') + '"><td><strong>' + esc(r.name) + '</strong></td>' +
         '<td class="mono">' + (r.v == null ? dash : fmt(r.v) + ' kWh/km') + '</td>' +
@@ -1118,57 +1117,57 @@ function refSection() {
     return isEpm ? '<button type="button" class="btn-accept" data-accept="' + esc(key) + '">' + esc(label) + '</button>' : '';
   }
   function preview(list, now, next) {
-    return '<table class="dt rec-prev"><thead><tr><th>Alert at</th><th>Alerts last quarter</th><th>Became cases</th></tr></thead><tbody>' +
+    return '<table class="dt rec-prev"><thead><tr><th>Threshold</th><th>Alerts last quarter</th><th>Converted to cases</th></tr></thead><tbody>' +
       list.map(function (p) {
-        var tag = p.pct === now ? '<span class="pv-mark pv-now">Now</span>' : p.pct === next ? '<span class="pv-mark pv-rec">Recommended</span>' : '';
+        var tag = p.pct === now ? '<span class="pv-mark pv-now">Current</span>' : p.pct === next ? '<span class="pv-mark pv-rec">Recommended</span>' : '';
         return '<tr class="' + (p.pct === next ? 'on' : '') + '"><td class="mono">+' + X.fmt(p.pct, 1) + '% ' + tag + '</td>' +
           '<td class="mono">' + p.alerts + '</td><td class="mono">' + p.cases + '</td></tr>';
       }).join('') + '</tbody></table>';
   }
   if (hop) {
-    rec = '<div class="rec"><div class="rec-head">Recommended for sections: +' + X.fmt(REF.section.recommendedPct, 1) +
-      '% <span class="rec-now">(now +' + X.fmt(alertPct, 1) + '%)</span></div><p>' + esc(REF.section.recommendWhy) + '</p>' +
+    rec = '<div class="rec"><div class="rec-head">Recommended section threshold: +' + X.fmt(REF.section.recommendedPct, 1) +
+      '% <span class="rec-now">(current +' + X.fmt(alertPct, 1) + '%)</span></div><p>' + esc(REF.section.recommendWhy) + '</p>' +
       acceptBtn('section:' + REF.section.recommendedPct, 'Accept +' + X.fmt(REF.section.recommendedPct, 1) + '% for sections') + '</div>';
   } else if (L) {
     var r = REF.lines[L.id];
     rec = '<div class="rec"><div class="rec-head">' + (r.recommendedPct != null
-        ? 'Recommended alert for the ' + esc(lineName(L.id)) + ': +' + X.fmt(r.recommendedPct, 1) + '% <span class="rec-now">(now +' + X.fmt(r.alertPct, 1) + '%)</span>'
-        : 'No change recommended for the ' + esc(lineName(L.id))) + '</div>' +
-      '<p>' + esc(r.recommendWhy) + ' Week-to-week variation on this line is about ' + X.fmt(r.variabilityPct, 1) + '%.</p>' +
-      (r.preview ? '<div class="rec-sub">What each level would have raised last quarter</div>' + preview(r.preview, r.alertPct, r.recommendedPct) : '') +
+        ? 'Recommended threshold, ' + esc(lineName(L.id)) + ': +' + X.fmt(r.recommendedPct, 1) + '% <span class="rec-now">(current +' + X.fmt(r.alertPct, 1) + '%)</span>'
+        : 'No change recommended, ' + esc(lineName(L.id))) + '</div>' +
+      '<p>' + esc(r.recommendWhy) + ' Week-to-week variability: ' + X.fmt(r.variabilityPct, 1) + '%.</p>' +
+      (r.preview ? '<div class="rec-sub">Alert volume by threshold, last quarter</div>' + preview(r.preview, r.alertPct, r.recommendedPct) : '') +
       (r.recommendedPct != null ? acceptBtn('line:' + L.id + ':' + r.recommendedPct, 'Accept +' + X.fmt(r.recommendedPct, 1) + '%') : '') + '</div>';
   } else {
     var recs = LINE_ORDER.filter(function (id) { return REF.lines[id].recommendedPct != null; });
-    rec = '<div class="rec"><div class="rec-head">Alert thresholds are recommended line by line</div>' +
-      '<p>Lines that vary little can use a tighter alert and catch problems sooner; noisy lines need a wider one so alerts stay meaningful.</p>' +
+    rec = '<div class="rec"><div class="rec-head">Line-specific thresholds recommended</div>' +
+      '<p>Low-variability lines support tighter thresholds for earlier detection; high-variability lines require wider thresholds to limit false alerts.</p>' +
       '<ul class="rec-list">' + recs.map(function (id) {
         var lr = REF.lines[id];
         return '<li><a class="cell-link" href="' + esc(url({ line: id })) + '#references">' + esc(lineName(id)) + '</a>: +' +
-          X.fmt(lr.recommendedPct, 1) + '% recommended (now +' + X.fmt(lr.alertPct, 1) + '%)</li>';
+          X.fmt(lr.recommendedPct, 1) + '% recommended (current +' + X.fmt(lr.alertPct, 1) + '%)</li>';
       }).join('') + '</ul></div>';
   }
   if (st.fleet !== 'All' && REF.fleets[st.fleet]) {
     var fr = REF.fleets[st.fleet];
     rec += '<div class="rec"><div class="rec-head">' + (fr.recommendedIndex != null
-        ? 'Recommended train alert for the ' + esc(st.fleet) + ': index ' + fr.recommendedIndex + ' <span class="rec-now">(now ' + fr.alertIndex + ')</span>'
-        : 'No change recommended for the ' + esc(st.fleet) + ' train alert (index ' + fr.alertIndex + ')') + '</div>' +
+        ? 'Recommended train alert, ' + esc(st.fleet) + ': index ' + fr.recommendedIndex + ' <span class="rec-now">(current ' + fr.alertIndex + ')</span>'
+        : 'No change recommended, ' + esc(st.fleet) + ' train alert (index ' + fr.alertIndex + ')') + '</div>' +
       '<p>' + esc(fr.recommendWhy) + '</p>' +
       (fr.recommendedIndex != null ? acceptBtn('fleet:' + st.fleet + ':' + fr.recommendedIndex, 'Accept index ' + fr.recommendedIndex) : '') + '</div>';
   }
-  var who = isEpm ? '<p class="rec-who" id="rec-status">You can accept a recommendation. The platform never changes a threshold on its own.</p>'
-    : '<p class="rec-who">Recommendations are accepted by ' + esc(R.personOf('epm')) + '. The platform never changes a threshold on its own.</p>';
+  var who = isEpm ? '<p class="rec-who" id="rec-status">Threshold changes require approval. No threshold is changed automatically.</p>'
+    : '<p class="rec-who">Threshold changes are approved by ' + esc(R.personOf('epm')) + '. No threshold is changed automatically.</p>';
   return '<section class="panel mb-6" id="references">' +
-    '<div class="panel-head"><div><div class="panel-title">What this scope is judged against</div>' +
-      '<div class="panel-sub">Four references, each answering a different question. The highlighted row is the one the dashboard is comparing with.</div></div>' +
+    '<div class="panel-head"><div><div class="panel-title">Performance Baselines</div>' +
+      '<div class="panel-sub">Reference values for the selected scope. Highlighted row: active benchmark.</div></div>' +
       '<div class="panel-actions">' + R.sref('S2') + '</div></div>' +
     '<div class="panel-body">' + table + '<div class="rec-grid">' + rec + '</div>' + who +
-      (can('references') ? '<p class="mt-2"><a class="cell-link" href="references.html">All references and thresholds</a></p>' : '') +
+      (can('references') ? '<p class="mt-2"><a class="cell-link" href="references.html">All baselines and thresholds</a></p>' : '') +
     '</div></section>';
 }
 
 /* ------------------------------------------------------------ confidence */
-var COV_LABEL = { movement: 'Train movement', metering: 'Substation metering', timetable: 'Timetable', fleet: 'Which train ran' };
-var BL_TYPE = { 'matched-run-decile': 'Matched runs', 'historical-self': 'Own history only' };
+var COV_LABEL = { movement: 'Train movement', metering: 'Substation metering', timetable: 'Timetable', fleet: 'Train identification' };
+var BL_TYPE = { 'matched-run-decile': 'Matched runs', 'historical-self': 'Historical only' };
 function covFor(ids) {
   var out = {};
   ['movement', 'metering', 'timetable', 'fleet'].forEach(function (k) {
@@ -1180,12 +1179,12 @@ function raiseIdeas(ids) {
   var out = [];
   ids.forEach(function (id) {
     var l = N.lineById(id), b = Q.baselineById(l.baselineId), c = N.COVERAGE[id], nm = lineName(id);
-    if (b && b.type === 'historical-self') out.push('Build a matched-run baseline for the ' + nm + ', so it is compared with similar runs rather than its own history.');
-    if (b && b.comparability && b.comparability.score === 'medium') out.push('Split the ' + nm + ' baseline by fleet, so mixed running is compared like for like.');
-    if (c.metering < 90) out.push('Close the gaps in substation metering on the ' + nm + ' (' + c.metering + '% of runs today).');
-    if (c.fleet < 85) out.push('Record which train ran each service on the ' + nm + ' (' + c.fleet + '% of runs today).');
+    if (b && b.type === 'historical-self') out.push('Establish a matched-run baseline for the ' + nm + ' (currently historical only).');
+    if (b && b.comparability && b.comparability.score === 'medium') out.push('Segment the ' + nm + ' baseline by fleet for like-for-like comparison of mixed running.');
+    if (c.metering < 90) out.push('Improve substation metering coverage on the ' + nm + ' (currently ' + c.metering + '% of runs).');
+    if (c.fleet < 85) out.push('Improve train identification coverage on the ' + nm + ' (currently ' + c.fleet + '% of runs).');
   });
-  if (focus && focus.weeks < 3) out.unshift('More weeks of data. This finding has ' + R.plural(focus.weeks, 'week', 'weeks') + ' so far.');
+  if (focus && focus.weeks < 3) out.unshift('Extend observation period (currently ' + R.plural(focus.weeks, 'week', 'weeks') + ').');
   return out;
 }
 function confSection() {
@@ -1203,7 +1202,7 @@ function confSection() {
         X.fmtInt(bl.sampleRuns) + ' runs' + SEP + esc(bl.comparability.score) + ' comparability</div>' +
       '<p>' + esc(bl.method) + '</p></div>';
   } else {
-    blHtml = '<table class="dt"><thead><tr><th>Line</th><th>Compared with</th><th>Confidence</th></tr></thead><tbody>' +
+    blHtml = '<table class="dt"><thead><tr><th>Line</th><th>Baseline type</th><th>Confidence</th></tr></thead><tbody>' +
       ids.map(function (id) {
         var b = Q.baselineById(N.lineById(id).baselineId), r = REF.lines[id];
         return '<tr><td><a class="cell-link" href="' + esc(url({ line: id })) + '#confidence">' + esc(lineName(id)) + '</a></td>' +
@@ -1212,17 +1211,17 @@ function confSection() {
   }
   var ideas = raiseIdeas(ids);
   return '<section class="panel mb-6" id="confidence">' +
-    '<div class="panel-head"><div><div class="panel-title">How sure the platform is</div>' +
+    '<div class="panel-head"><div><div class="panel-title">Data Confidence</div>' +
       '<div class="panel-sub">' + X.conf(confLevel, confWhy) + ' ' + esc(confWhy) + '</div></div>' +
       '<div class="panel-actions">' + R.sref('S4') + '</div></div>' +
     '<div class="panel-body"><div class="conf-grid">' +
       '<div><div class="rec-sub">' + (bl ? 'Baseline' : 'Baselines by line') + '</div>' + blHtml + '</div>' +
-      '<div><div class="rec-sub">Data behind this scope</div>' + covHtml +
-        '<p class="conf-note">Energy is ' + X.estTag() + ' from train movement and calibrated against substation metering.</p></div>' +
-      '<div><div class="rec-sub">What would raise confidence</div>' +
+      '<div><div class="rec-sub">Data coverage</div>' + covHtml +
+        '<p class="conf-note">Traction energy: ' + X.estTag() + ' from train movement, calibrated against substation metering.</p></div>' +
+      '<div><div class="rec-sub">Recommended data improvements</div>' +
         (ideas.length ? '<ul class="rec-list">' + ideas.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>'
-          : '<p class="conf-note">Nothing pressing. Confidence is limited mainly by normal week-to-week variation.</p>') +
-        '<p class="conf-note"><strong>High</strong> means a strong like-for-like baseline and complete data. <strong>Medium</strong> means the comparison is less precise. <strong>Low</strong> means treat the number as a prompt to look, not a conclusion.</p>' +
+          : '<p class="conf-note">No critical gaps. Confidence limited by normal week-to-week variability.</p>') +
+        '<p class="conf-note"><strong>High</strong>: strong like-for-like baseline, complete data. <strong>Medium</strong>: reduced comparison precision. <strong>Low</strong>: indicative only; not conclusive.</p>' +
       '</div>' +
     '</div></div></section>';
 }
@@ -1232,10 +1231,10 @@ function findingsTable() {
   var list = focus ? [focus].concat(findingsHere) : findingsHere;
   if (!list.length) return '';
   return '<section class="panel mb-6" id="deviations">' +
-    '<div class="panel-head"><div><div class="panel-title">All findings ' + (focus ? 'on the ' + esc(lineName(L.id)) : level === 'network' ? 'on the network' : 'in this scope') + ' (' + list.length + ')</div>' +
-      '<div class="panel-sub">Only differences that persist, have enough runs and a usable baseline become findings. Smaller ones are held and watched.</div></div>' +
+    '<div class="panel-head"><div><div class="panel-title">All Findings' + (focus ? ' \u2014 ' + esc(lineName(L.id)) : level === 'network' ? '' : ' in Scope') + ' (' + list.length + ')</div>' +
+      '<div class="panel-sub">Persistent deviations with sufficient run volume and a valid baseline. Smaller deviations are monitored.</div></div>' +
       '<div class="panel-actions">' + R.sref('S1') + '</div></div>' +
-    '<div class="panel-body flush"><table class="dt"><thead><tr><th>Finding</th><th>Type</th><th>Confidence</th><th>Against expected</th><th>A year</th><th></th></tr></thead><tbody>' +
+    '<div class="panel-body flush"><table class="dt"><thead><tr><th>Finding</th><th>Status</th><th>Confidence</th><th>vs Expected</th><th>Annual impact</th><th></th></tr></thead><tbody>' +
       list.map(function (d) {
         var a = ATT[d.attention];
         return '<tr class="' + (focus && d.id === focus.id ? 'on' : '') + '">' +
@@ -1271,7 +1270,7 @@ for (var ai = 0; ai < accepts.length; ai++) {
         : p[0] === 'fleet' ? 'New ' + p[1] + ' train alerts will use index ' + p[2]
         : 'New section alerts will use +' + X.fmt(Number(p[1]), 1) + '%';
       var s = document.getElementById('rec-status');
-      if (s) s.textContent = 'Accepted. ' + what + ' from next week. Recorded against ' + R.personOf('epm') + '.';
+      if (s) s.textContent = 'Accepted. ' + what + ', effective next week. Approved by ' + R.personOf('epm') + '.';
       b.disabled = true;
       b.textContent = 'Accepted';
     });
